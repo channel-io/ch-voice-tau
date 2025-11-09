@@ -1,0 +1,50 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+This rule establishes the voice interaction requirements and operating conventions for voice-tau (the voice version of τ-bench/τ²-bench). It is the reference for agent behavior, I/O, interfaces, and evaluation.
+
+Voice Interaction Model
+
+We are considering a user model similar to a gpt-realtime system; however, the user–agent interaction does not need to conform to any external realtime API specification. Instead, we define our own portable event interface, with particular attention to tool-call related events.
+
+We build the system as duplex from the outset. While turn-taking can be layered on top of duplex, a natively turn-based design cannot support true duplex operation. Each side’s VAD or turn detector may override the other side’s turn-end signal; if one party adopts the peer’s turn-end signal as its own VAD, the interaction effectively becomes turn-based. When running in duplex, we do not add special handling for interruptions. For a user-to-agent interruption, whether the agent stops or continues speaking is at the agent’s discretion. For an agent-to-user interruption, the user will stop speaking even if mid-utterance.
+
+Symmetric I/O and Interface
+
+The user and the agent have symmetric I/O capabilities.
+- Inputs: audio stream, tool call results, and optionally the peer’s turn start/end signals.
+- Outputs: audio stream, a transcription (retained for evaluation), tool calls, and turn start/end signals.
+
+To enable easy porting of various agents, we expose a portable interface over WebSocket or RTC. During testing, audio playback is not required; we store audio together with time-alignment metadata.
+
+Event Interface (high level)
+
+session_start, user_turn_start, user_audio_chunk, user_turn_end, agent_turn_start, agent_audio_chunk, agent_turn_end, transcript_update, tool_call_request, tool_call_result, error, session_end. Tool-call events must carry structured arguments/results consistent with existing τ-bench tool schemas.
+
+Evaluation and Metrics
+
+- Task success: keep the existing τ database hash for task success (end state vs goal state).
+- Exact-match reads: for read actions that require exact output matching, rely on ASR transcription despite limitations.
+- Latency: measure FTTT (first-token/first-response latency) from user speech onset to the first agent response.
+- Optional: track tool-call latency and turn detection timing for diagnostics.
+
+Grounding in τ-bench
+
+τ-bench evaluates agents across domains with tools/APIs and policies under multi-turn interaction. It emphasizes consistency via pass^(k) (e.g., pass¹, pass², …), policy compliance, and end-state correctness. Voice-tau inherits these principles while adding duplex audio I/O, time-aligned transcripts, and a portable streaming interface. Known limitations (user simulators, domain coverage, cost) remain and should be considered when interpreting voice results.
+
+Authoring and Communication Conventions
+
+- Tone: concise, action-oriented, high-signal; prefer bullet points.
+- Formatting: only format code, commands, or structured data. Use backticks for file, directory, class, and function names; use markdown links for URLs.
+- Autonomy: proceed without approval unless blocked by missing info.
+- Safety: preserve existing indentation and avoid reformatting unrelated code.
+
+Operational Practices
+
+- Use semantic search to explore code; parallelize independent lookups.
+- Cite existing code with code references; use fenced blocks only for new/proposed code.
+- Make small, focused edits; keep linter clean; avoid extraneous changes.
+- For multi-step work, create atomic todos and update statuses as work progresses.
