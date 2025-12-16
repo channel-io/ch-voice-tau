@@ -109,12 +109,22 @@ class GeminiLiveAgent(BaseAgent):
         if self.tools:
             function_declarations = []
             for tool in self.tools:
+                # Get description from tool's method
+                description = ""
+                if hasattr(tool, '_get_description'):
+                    description = tool._get_description()
+                elif hasattr(tool, 'short_desc'):
+                    description = tool.short_desc
+                
                 func_decl = {
                     "name": tool.name,
-                    "description": tool.description or "",
+                    "description": description,
                 }
-                if tool.parameters:
-                    func_decl["parameters"] = tool.parameters
+                
+                # Get parameters schema
+                if hasattr(tool, 'params'):
+                    func_decl["parameters"] = tool.params.model_json_schema()
+                
                 function_declarations.append(func_decl)
             
             config["tools"] = [{"function_declarations": function_declarations}]
