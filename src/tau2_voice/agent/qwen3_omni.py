@@ -5,6 +5,7 @@ vllm serve Qwen/Qwen3-Omni-30B-A3B-Instruct --port 8901 --host 127.0.0.1 --dtype
 import asyncio
 import json
 import base64
+import re
 from typing import Optional, Literal, AsyncGenerator, override
 
 import aiohttp
@@ -16,6 +17,32 @@ from tau2_voice.agent.base import BaseAgent
 from tau2_voice.models.events import Event, AudioChunkEvent, AudioDoneEvent, TranscriptUpdateEvent
 from tau2_voice.adapters.qwen3_omni import Qwen3OmniEventAdapter
 from tau2_voice.config import VoiceTauConfig
+
+
+def clean_text_for_tts(text: str) -> str:
+    """
+    마크다운 및 특수 문자를 제거하여 TTS에 적합한 텍스트로 변환
+    """
+    # **bold** -> bold
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    
+    # *italic* -> italic
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    
+    # - list items -> remove dash
+    text = re.sub(r'^[\s]*[-•]\s+', '', text, flags=re.MULTILINE)
+    
+    # Remove markdown headers (##, ###, etc)
+    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+    
+    # Remove backticks
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    
+    # Remove extra whitespace and newlines
+    text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single
+    text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
+    
+    return text.strip()
 
 
 class Qwen3OmniAgent(BaseAgent):
@@ -293,17 +320,20 @@ class Qwen3OmniAgent(BaseAgent):
         """
         텍스트를 gpt-4o-mini-tts로 변환하여 audio chunk로 스트리밍
         """
+        # Clean markdown and special characters for better TTS
+        cleaned_text = clean_text_for_tts(text)
+        
         message_id = f"tts_{hash(text)}"
         chunks_sent = 0
         
         try:
-            logger.info(f"Generating TTS for: {text[:50]}...")
+            logger.info(f"Generating TTS for: {cleaned_text[:50]}...")
             
             # TTS 스트리밍 (instructions는 간단하게)
             async with self._openai.audio.speech.with_streaming_response.create(
                 model=self.tts_model,
                 voice=self.tts_voice,
-                input=text,
+                input=cleaned_text,
                 instructions="Speak clearly and naturally.",  # 가벼운 instruction
                 response_format="pcm",
             ) as response:
