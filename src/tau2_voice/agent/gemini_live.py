@@ -283,11 +283,20 @@ class GeminiLiveAgent(BaseAgent):
                 transcript = event.transcript if hasattr(event, 'transcript') else ""
                 if transcript:
                     logger.info(f"[{self.role}] Received user transcript, sending as text: {transcript[:100]}...")
-                    await self._session.send_client_content(
-                        turns=[{"role": "user", "parts": [{"text": transcript}]}],
-                        turn_complete=True
-                    )
-                    logger.info(f"[{self.role}] Sent transcript to Gemini, waiting for response")
+                    try:
+                        # Use types.Content format for Gemini Live API
+                        from google.genai import types as genai_types
+                        content = genai_types.Content(
+                            role="user",
+                            parts=[genai_types.Part(text=transcript)]
+                        )
+                        await self._session.send_client_content(
+                            turns=[content],
+                            turn_complete=True
+                        )
+                        logger.info(f"[{self.role}] Sent transcript to Gemini, waiting for response")
+                    except Exception as e:
+                        logger.error(f"[{self.role}] Failed to send transcript: {e}")
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)
