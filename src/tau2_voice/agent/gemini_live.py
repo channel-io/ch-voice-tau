@@ -14,6 +14,7 @@ Required:
 import asyncio
 import base64
 import json
+import struct
 from typing import Optional, Literal, AsyncGenerator, override
 
 from loguru import logger
@@ -25,6 +26,24 @@ from tau2_voice.models.events import (
     ToolCallRequestEvent, ToolCallResultEvent, SpeakRequestEvent
 )
 from tau2_voice.config import VoiceTauConfig
+
+
+def resample_audio_24k_to_16k(audio_data: bytes) -> bytes:
+    """Resample audio from 24kHz to 16kHz (2:3 ratio)"""
+    # Convert bytes to 16-bit samples
+    samples = struct.unpack(f'<{len(audio_data)//2}h', audio_data)
+    
+    # Simple downsampling: take every 3rd sample and interpolate to 2
+    # 24kHz / 16kHz = 3/2, so we need to reduce samples by 2/3
+    resampled = []
+    for i in range(0, len(samples) - 2, 3):
+        # Take 3 samples, output 2 (linear interpolation)
+        resampled.append(samples[i])
+        # Interpolate between samples[i] and samples[i+2]
+        resampled.append((samples[i] + samples[i + 2]) // 2)
+    
+    return struct.pack(f'<{len(resampled)}h', *resampled)
+
 
 try:
     from google import genai
@@ -214,13 +233,6 @@ class GeminiLiveAgent(BaseAgent):
             self._receive_task = asyncio.create_task(self._receive_loop())
             
             logger.info(f"[{self.role}] Connected to Gemini Live API (model={self.model}, voice={self.voice})")
-            
-            # Send initial greeting prompt to start conversation
-            await self._session.send_client_content(
-                turns=[{"role": "user", "parts": [{"text": "Start the conversation with a brief greeting."}]}],
-                turn_complete=True
-            )
-            logger.info(f"[{self.role}] Sent initial greeting prompt")
         except Exception as e:
             logger.error(f"[{self.role}] Failed to connect to Gemini Live API: {e}")
             raise
@@ -259,13 +271,15 @@ class GeminiLiveAgent(BaseAgent):
             if event.type == "audio.chunk":
                 # Send audio chunk to Gemini
                 audio_data = base64.b64decode(event.audio_chunk)
+                # Resample from 24kHz (OpenAI) to 16kHz (Gemini)
+                resampled_data = resample_audio_24k_to_16k(audio_data)
                 await self._session.send_realtime_input(
                     audio=types.Blob(
-                        data=audio_data,
+                        data=resampled_data,
                         mime_type="audio/pcm;rate=16000"
                     )
                 )
-                logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} bytes)")
+                logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} -> {len(resampled_data)} bytes, resampled)")
             
             elif event.type == "audio.done":
                 # Signal end of user's audio turn
