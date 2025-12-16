@@ -325,6 +325,10 @@ class GeminiLiveAgent(BaseAgent):
     async def _process_response(self, response):
         """Process a response from Gemini Live API"""
         try:
+            # Debug: log response structure
+            resp_attrs = [attr for attr in dir(response) if not attr.startswith('_')]
+            logger.debug(f"[{self.role}] Response attrs: {resp_attrs[:10]}")
+            
             # Handle server content
             if hasattr(response, 'server_content') and response.server_content:
                 server_content = response.server_content
@@ -382,11 +386,13 @@ class GeminiLiveAgent(BaseAgent):
                 
                 # Handle turn complete
                 if hasattr(server_content, 'turn_complete') and server_content.turn_complete:
+                    logger.info(f"[{self.role}] Turn complete received")
                     if self._current_message_id:
                         await self._event_queue.put(AudioDoneEvent(
                             role=self.role,
                             message_id=self._current_message_id
                         ))
+                        logger.info(f"[{self.role}] Sent AudioDoneEvent for {self._current_message_id}")
                         self._current_message_id = None
             
             # Handle tool calls
