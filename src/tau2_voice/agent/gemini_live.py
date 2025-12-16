@@ -249,10 +249,12 @@ class GeminiLiveAgent(BaseAgent):
                         mime_type="audio/pcm;rate=16000"
                     )
                 )
+                logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} bytes)")
             
             elif event.type == "audio.done":
-                # Signal end of audio stream
-                await self._session.send_realtime_input(audio_stream_end=True)
+                # Don't send audio_stream_end - let Gemini's VAD handle turn detection
+                # Sending audio_stream_end too early causes interruptions
+                logger.debug(f"[{self.role}] Audio done received, letting VAD handle turn detection")
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)
@@ -342,6 +344,7 @@ class GeminiLiveAgent(BaseAgent):
                                 if self._current_message_id is None:
                                     self._message_counter += 1
                                     self._current_message_id = f"gemini_{self._message_counter}"
+                                    logger.info(f"[{self.role}] Started new audio response: {self._current_message_id}")
                                 
                                 # Convert to base64 and send audio chunk
                                 audio_b64 = base64.b64encode(part.inline_data.data).decode('utf-8')
@@ -350,6 +353,7 @@ class GeminiLiveAgent(BaseAgent):
                                     message_id=self._current_message_id,
                                     audio_chunk=audio_b64
                                 ))
+                                logger.debug(f"[{self.role}] Sent audio output chunk ({len(part.inline_data.data)} bytes)")
                 
                 # Handle output transcription
                 if hasattr(server_content, 'output_transcription') and server_content.output_transcription:
