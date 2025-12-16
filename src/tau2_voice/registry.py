@@ -4,7 +4,7 @@ from typing import Callable, Dict, Optional, Type
 from loguru import logger
 from pydantic import BaseModel
 
-from tau2_voice.agent import BaseAgent, UserAgent, HumanAgent, RealtimeAgent
+from tau2_voice.agent import BaseAgent, UserAgent, HumanAgent, RealtimeAgent, Qwen3OmniAgent, GeminiLiveAgent
 from tau2.agent.llm_agent import LLMAgent, LLMGTAgent, LLMSoloAgent
 from tau2.user.user_simulator import DummyUser
 
@@ -174,6 +174,8 @@ try:
     registry.register_agent(UserAgent, "user_agent")
     registry.register_agent(HumanAgent, "human_agent")
     registry.register_agent(RealtimeAgent, "realtime_agent")
+    registry.register_agent(Qwen3OmniAgent, "qwen3_omni_agent")
+    registry.register_agent(GeminiLiveAgent, "gemini_live_agent")
     registry.register_domain(mock_domain_get_environment, "mock")
     registry.register_tasks(mock_domain_get_tasks, "mock")
     registry.register_domain(airline_domain_get_environment, "airline")

@@ -34,7 +34,7 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    async def subscribe(self) -> AsyncGenerator[Event]:
+    async def subscribe(self) -> AsyncGenerator[Event, None]:
         """
         Subscribe to inbound messages from the transport as an async generator.
         This is the generalized Sub operation for receiving data.

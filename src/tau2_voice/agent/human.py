@@ -44,7 +44,7 @@ class HumanAgent(BaseAgent):
             print(f"Tool call result: {event.content}")
 
     @override
-    async def subscribe(self) -> AsyncGenerator[Event]:
+    async def subscribe(self) -> AsyncGenerator[Event, None]:
         async for chunk in self.source.read():
             event = AudioChunkEvent(
                 role=self.role,

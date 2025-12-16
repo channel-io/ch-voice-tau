@@ -1,6 +1,7 @@
 import asyncio
 import time
 import uuid
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -47,6 +48,77 @@ DO:
 - Mention your ORDER NUMBER or ACCOUNT issue from your scenario
 - Ask for help with YOUR SPECIFIC problem IN ENGLISH"""
 
+# When the user simulator slips into "agent" voice, we re-ask once/twice with stronger constraints.
+USER_MAX_REPAIR_ATTEMPTS = 2
+
+
+def _extract_known_info(scenario_str: str) -> dict:
+    """
+    Best-effort extraction of common IDs from scenario string for guardrails.
+    """
+    info: dict = {}
+    # e.g. "You are Emma Kim."
+    m = re.search(r"\bYou are ([A-Z][a-z]+ [A-Z][a-z]+)\b", scenario_str)
+    if m:
+        info["name"] = m.group(1)
+    # e.g. "Your user id is emma_kim_9957."
+    m = re.search(r"\buser id is ([a-z0-9_\\-]+)\b", scenario_str, flags=re.IGNORECASE)
+    if m:
+        info["user_id"] = m.group(1)
+    # e.g. "cancel reservation EHGLP3"
+    m = re.search(r"\breservation\\s+([A-Z0-9]{5,10})\\b", scenario_str)
+    if m:
+        info["reservation_id"] = m.group(1)
+    return info
+
+
+def _build_customer_opening(scenario_str: str) -> str:
+    info = _extract_known_info(scenario_str)
+    parts: list[str] = []
+    if info.get("name"):
+        parts.append(f"Hi, I'm {info['name']}.")
+    else:
+        parts.append("Hi.")
+    if info.get("reservation_id"):
+        parts.append(f"I need help canceling my reservation {info['reservation_id']}.")
+    else:
+        parts.append("I need help with my reservation.")
+    parts.append("Can you tell me what my options are for a refund?")
+    if "out of town" in scenario_str.lower():
+        parts.append("It may be more than 24 hours since I booked, but I was out of town and couldn't handle it sooner.")
+    return " ".join(parts)
+
+
+def _looks_like_agent_speech(text: str) -> bool:
+    t = text.strip().lower()
+    if not t:
+        return False
+    # Strong Spanish markers we saw in logs
+    if any(tok in text for tok in ["¿", "¡", "políticas", "reserva", "podrías", "claro"]):
+        return True
+    # Classic agent openings / phrases
+    agent_starts = (
+        "hi! how can i help",
+        "hello! how can i help",
+        "how can i help you",
+        "how may i help you",
+        "thank you for sharing",
+        "i can help you",
+        "i'd be happy to help",
+    )
+    if any(t.startswith(s) for s in agent_starts):
+        return True
+    agent_phrases = (
+        "that will help me proceed",
+        "could you confirm the airline",
+        "could you confirm the name",
+        "could you provide",
+        "let me check",
+        "i'll check",
+        "i have your",
+    )
+    return any(p in t for p in agent_phrases)
+
 class VoiceOrchestrator:
     def __init__(
         self,
@@ -73,6 +145,12 @@ class VoiceOrchestrator:
         
         # Track pending tool calls to merge with transcript messages
         self.pending_tool_calls: dict = {}  # message_id -> tool_calls
+        
+        # User-simulator guardrails
+        self._user_repair_attempts: int = 0
+        self._scenario_str_cache: str = ""
+        self._customer_opening_cache: str = ""
+        self._last_agent_transcript: str = ""
 
         # Initialize audio collector
         timestamp = get_now()
@@ -113,11 +191,16 @@ class VoiceOrchestrator:
             )
             simulation_run.reward_info = reward_info
             
+            # Calculate success and finalize audio collector with metadata
+            reward = reward_info.reward if reward_info else 0.0
+            success = reward >= 1.0
+            self.collector.finalize(success=success, reward=reward)
+            
             # Log results
             logger.info(f"Simulation completed")
             logger.info(f"Termination reason: {simulation_run.termination_reason}")
             logger.info(f"Duration: {simulation_run.duration:.2f}s")
-            logger.info(f"Reward: {reward_info.reward}")
+            logger.info(f"Reward: {reward}")
             if reward_info.db_check:
                 logger.info(f"DB Match: {reward_info.db_check.db_match}")
                 logger.info(f"DB Reward: {reward_info.db_check.db_reward}")
@@ -126,6 +209,11 @@ class VoiceOrchestrator:
         except Exception as e:
             logger.error(f"Error during evaluation: {e}")
             logger.error(f"Message count: {len(simulation_run.messages)}")
+            # Finalize collector even on error (without success/reward)
+            try:
+                self.collector.finalize()
+            except:
+                pass
             raise
         
         return simulation_run
@@ -143,6 +231,8 @@ class VoiceOrchestrator:
         )
         # Kick off with user - remind them of their role and scenario
         scenario_str = str(self.task.user_scenario) if hasattr(self.task, 'user_scenario') else 'Check your instructions'
+        self._scenario_str_cache = scenario_str
+        self._customer_opening_cache = _build_customer_opening(scenario_str)
         
         # Log the scenario being used
         logger.info(f"\n{'='*80}")
@@ -151,13 +241,14 @@ class VoiceOrchestrator:
         logger.info(scenario_str[:500])  # Log first 500 chars
         logger.info(f"{'='*80}\n")
         
-        first_instructions = f"""{DEFAULT_FIRST_INSTRUCTIONS}
-
-IMPORTANT: Follow your scenario below. Start the conversation by mentioning your specific problem from the scenario.
-
-Your scenario: {scenario_str}"""
-        
-        await self.user.publish(SpeakRequestEvent(instructions=first_instructions))
+        # Kickoff: force a clean customer opening (prompt-only wasn't reliable enough).
+        kickoff = (
+            "You are the CUSTOMER. Speak ENGLISH only. "
+            "Do NOT act like the service agent. "
+            "Start the call by saying this message now (as-is, natural voice):\n"
+            f"{self._customer_opening_cache}"
+        )
+        await self.user.publish(SpeakRequestEvent(instructions=kickoff))
         try:
             await asyncio.gather(self._task_agent, self._task_user)
         except asyncio.CancelledError:
@@ -169,11 +260,10 @@ Your scenario: {scenario_str}"""
             t.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        # Finalize collector before closing participants
-        try:
-            self.collector.finalize()
-        finally:
-            pass
+        
+        # Note: collector.finalize() is called in run() after evaluation
+        # to include success and reward information
+        
         await asyncio.gather(self.assistant.disconnect(), self.user.disconnect())
         logger.info("Participants disconnected")
         
@@ -238,7 +328,9 @@ Your scenario: {scenario_str}"""
             self.collector.handle_audio_done(role=event.role, message_id=event.message_id)
         except Exception:
             pass
-        # override the VAD with manual speak request to continue the dialog
+        # Forward audio.done to target first (needed for turn-based agents like Qwen3-Omni)
+        await target.publish(event)
+        # Then send speak request to trigger response generation
         await target.publish(SpeakRequestEvent())
 
     async def _handle_transcript_update(self, event: TranscriptUpdateEvent, source: BaseAgent):
@@ -299,6 +391,30 @@ Your scenario: {scenario_str}"""
                     self._task_user.cancel()
                 return
         
+        # Guardrails:
+        # - Reset repair attempts after each assistant turn
+        # - If user simulator speaks like an agent, request a corrected retry (do not forward)
+        if source.role == "assistant":
+            self._last_agent_transcript = event.transcript
+            self._user_repair_attempts = 0
+        elif source.role == "user":
+            if _looks_like_agent_speech(event.transcript) and self._user_repair_attempts < USER_MAX_REPAIR_ATTEMPTS:
+                self._user_repair_attempts += 1
+                hint = self._customer_opening_cache or _build_customer_opening(self._scenario_str_cache)
+                retry_instructions = (
+                    "You are the CUSTOMER. Speak ENGLISH only. "
+                    "You just spoke like the service agent. That is WRONG.\n\n"
+                    "Rules:\n"
+                    "- Do NOT say things like 'How can I help you' or 'Thank you for sharing'.\n"
+                    "- Speak as the caller asking for help (use 'I', 'my').\n"
+                    "- Answer the agent's last question.\n\n"
+                    f"Agent said: {self._last_agent_transcript}\n\n"
+                    f"Now reply as the CUSTOMER in 1-2 sentences. If unsure, say something like:\n{hint}"
+                )
+                logger.warning(f"User spoke like agent; requesting retry ({self._user_repair_attempts}/{USER_MAX_REPAIR_ATTEMPTS})")
+                await self.user.publish(SpeakRequestEvent(instructions=retry_instructions))
+                return
+
         # Convert to Message for evaluation
         timestamp = get_now()
         if source.role == "assistant":
@@ -309,6 +425,8 @@ Your scenario: {scenario_str}"""
                 turn_idx=self.turn_idx,
                 cost=0.0,
             )
+            # Forward assistant transcript to user simulator so it can react (text-based context).
+            await self.user.publish(event)
         else:  # user
             msg = UserMessage(
                 role="user",
@@ -317,6 +435,8 @@ Your scenario: {scenario_str}"""
                 turn_idx=self.turn_idx,
                 cost=0.0,
             )
+            # Forward user transcript to assistant (for text-based agents like Gemini)
+            await self.assistant.publish(event)
         self.messages.append(msg)
         self.turn_idx += 1
 
@@ -345,11 +465,20 @@ Your scenario: {scenario_str}"""
         logger.info(f"Tool call request: {event}")
         logger.info(f"Tool call response: {tool_message}")
         
-        # Debug: Log which agent made the call and their tools
-        agent = source
-        logger.info(f"[DEBUG] Tool '{event.name}' called by: {agent.role}")
-        logger.info(f"[DEBUG] {agent.role} has {len(agent.tools)} tools: {[t.name for t in agent.tools]}")
-        logger.info(f"[DEBUG] {agent.role} system prompt (first 500 chars): {agent.system_prompt[:500] if hasattr(agent, 'system_prompt') else 'N/A'}")
+        # Record tool call and response in audio collector
+        try:
+            self.collector.handle_tool_call(
+                role=source.role,
+                tool_name=event.name,
+                tool_call_id=event.id,
+                arguments=event.arguments,
+            )
+            self.collector.handle_tool_response(
+                tool_call_id=event.id,
+                result=tool_message.content,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record tool call in collector: {e}")
         
         # Create tool call
         tool_call = ToolCall(

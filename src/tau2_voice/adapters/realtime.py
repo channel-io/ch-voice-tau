@@ -23,9 +23,34 @@ class RealtimeEventAdapter(BaseEventAdapter):
     def wrap_event(self, event: Event) -> RealtimeClientEvent | None:
         match event.type:
             case "audio.chunk":
-                return InputAudioBufferAppend(
-                    audio=event.audio_chunk
-                )
+                # NOTE: OpenAI Realtime input audio is always treated as "user" audio by the API.
+                # For the *user simulator* session (self.role == "user"), assistant audio MUST NOT
+                # be fed as input audio, or the simulator will transcribe the assistant's words as
+                # if they were spoken by the user and start responding like an assistant.
+                if self.role == "assistant":
+                    return InputAudioBufferAppend(
+                        audio=event.audio_chunk
+                    )
+                return None
+            case "transcript.update":
+                # IMPORTANT: For the user simulator session, the OpenAI Realtime model is still the
+                # "assistant" role at the API level. To make it *act like the customer*, we should
+                # feed the real agent's utterance as a **user** message, so the model responds as
+                # "assistant" (which we reinterpret as the customer in our system).
+                #
+                # If we inject the agent's utterance with role="assistant", the model tends to
+                # continue speaking like an agent (it sees those as its own prior outputs).
+                if self.role == "user" and getattr(event, "role", None) == "assistant":
+                    item = {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": event.transcript}],
+                    }
+                    logger.info(
+                        f"Sending agent transcript to user simulator as role=user: {event.transcript[:120]}"
+                    )
+                    return ConversationItemCreate(item=item)
+                return None
             case "speak.request":
                 return ResponseCreate(
                     response=ResponseRequest(
