@@ -326,6 +326,14 @@ class Qwen3OmniAgent(BaseAgent):
         message_id = f"tts_{hash(text)}"
         chunks_sent = 0
         
+        # Send transcript update event so it's recorded in the conversation
+        transcript_event = TranscriptUpdateEvent(
+            role=self.role,
+            message_id=message_id,
+            transcript=text  # Original text (not cleaned) for reference
+        )
+        await self._event_queue.put(transcript_event)
+        
         try:
             logger.info(f"Generating TTS for: {cleaned_text[:50]}...")
             

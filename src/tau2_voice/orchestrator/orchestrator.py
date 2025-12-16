@@ -356,11 +356,20 @@ Your scenario: {scenario_str}"""
         logger.info(f"Tool call request: {event}")
         logger.info(f"Tool call response: {tool_message}")
         
-        # Debug: Log which agent made the call and their tools
-        agent = source
-        logger.info(f"[DEBUG] Tool '{event.name}' called by: {agent.role}")
-        logger.info(f"[DEBUG] {agent.role} has {len(agent.tools)} tools: {[t.name for t in agent.tools]}")
-        logger.info(f"[DEBUG] {agent.role} system prompt (first 500 chars): {agent.system_prompt[:500] if hasattr(agent, 'system_prompt') else 'N/A'}")
+        # Record tool call and response in audio collector
+        try:
+            self.collector.handle_tool_call(
+                role=source.role,
+                tool_name=event.name,
+                tool_call_id=event.id,
+                arguments=event.arguments,
+            )
+            self.collector.handle_tool_response(
+                tool_call_id=event.id,
+                result=tool_message.content,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record tool call in collector: {e}")
         
         # Create tool call
         tool_call = ToolCall(

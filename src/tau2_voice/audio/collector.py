@@ -40,6 +40,7 @@ class AudioCollector:
         self._current_turn: Optional[dict] = None
         self._turns: list[dict] = []
         self._transcripts: dict[str, str] = {}  # message_id -> transcript
+        self._tool_calls: list[dict] = []  # tool call and response records
 
         # Ensure directory exists
         self.output_wav_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +125,38 @@ class AudioCollector:
                 turn["transcript"] = transcript
                 break
 
+    def handle_tool_call(self, role: Role, tool_name: str, tool_call_id: str, arguments: dict):
+        """
+        Record a tool call request.
+        """
+        wall_now = self._now_wall()
+        rel_sec = self._rel_seconds(wall_now) if self._conversation_started_at_wall else 0.0
+        
+        self._tool_calls.append({
+            "type": "tool_call",
+            "role": role,
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "arguments": arguments,
+            "wall_time": wall_now,
+            "rel_sec": rel_sec,
+        })
+
+    def handle_tool_response(self, tool_call_id: str, result: str):
+        """
+        Record a tool call response.
+        """
+        wall_now = self._now_wall()
+        rel_sec = self._rel_seconds(wall_now) if self._conversation_started_at_wall else 0.0
+        
+        self._tool_calls.append({
+            "type": "tool_response",
+            "tool_call_id": tool_call_id,
+            "result": result,
+            "wall_time": wall_now,
+            "rel_sec": rel_sec,
+        })
+
     def finalize(self, success: Optional[bool] = None, reward: Optional[float] = None):
         """
         Close the WAV and write the metadata JSON describing the conversation turns.
@@ -153,6 +186,7 @@ class AudioCollector:
             "conversation_start_wall": self._conversation_started_at_wall,
             "total_samples": self._samples_written,
             "turns": self._turns,
+            "tool_calls": self._tool_calls,
         }
         
         # Add success and reward if provided
