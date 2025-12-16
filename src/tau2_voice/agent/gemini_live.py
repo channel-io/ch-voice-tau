@@ -158,13 +158,13 @@ class GeminiLiveAgent(BaseAgent):
             # Enable transcription for both input and output
             "input_audio_transcription": {},
             "output_audio_transcription": {},
-            # VAD configuration - wait longer for speech to end
+            # VAD configuration - more responsive
             "realtime_input_config": {
                 "automatic_activity_detection": {
                     "disabled": False,
-                    "start_of_speech_sensitivity": "START_SENSITIVITY_LOW",
-                    "end_of_speech_sensitivity": "END_SENSITIVITY_LOW",
-                    "silence_duration_ms": 1000,  # Wait 1 second of silence before responding
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_HIGH",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_HIGH",
+                    "silence_duration_ms": 500,  # 500ms silence triggers response
                 }
             }
         }
@@ -214,6 +214,13 @@ class GeminiLiveAgent(BaseAgent):
             self._receive_task = asyncio.create_task(self._receive_loop())
             
             logger.info(f"[{self.role}] Connected to Gemini Live API (model={self.model}, voice={self.voice})")
+            
+            # Send initial greeting prompt to start conversation
+            await self._session.send_client_content(
+                turns=[{"role": "user", "parts": [{"text": "Start the conversation with a brief greeting."}]}],
+                turn_complete=True
+            )
+            logger.info(f"[{self.role}] Sent initial greeting prompt")
         except Exception as e:
             logger.error(f"[{self.role}] Failed to connect to Gemini Live API: {e}")
             raise

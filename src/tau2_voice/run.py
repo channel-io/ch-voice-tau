@@ -240,7 +240,8 @@ if __name__ == "__main__":
     
     # Model selection
     # assistant_model = "gpt-realtime-mini-2025-10-06"  # or "gpt-realtime-mini-2025-10-06"
-    assistant_model = "qwen3_omni"
+    # assistant_model = "qwen3_omni"
+    assistant_model = "gemini-2.5-flash-native-audio-preview-12-2025"
     user_model = "gpt-realtime-2025-08-28"
     
     # Run all tasks (or specify task_ids or num_tasks)
@@ -252,7 +253,7 @@ if __name__ == "__main__":
     
     results, accuracy = asyncio.run(run_all_tasks(
         domain=domain,
-        task_ids=["7"],
+        task_ids=["0"],
         num_tasks=num_tasks,
         batch_size=5,  # Run 10 tasks in parallel
         assistant_model=assistant_model,
