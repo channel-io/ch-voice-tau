@@ -158,6 +158,15 @@ class GeminiLiveAgent(BaseAgent):
             # Enable transcription for both input and output
             "input_audio_transcription": {},
             "output_audio_transcription": {},
+            # VAD configuration - wait longer for speech to end
+            "realtime_input_config": {
+                "automatic_activity_detection": {
+                    "disabled": False,
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_LOW",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_LOW",
+                    "silence_duration_ms": 1000,  # Wait 1 second of silence before responding
+                }
+            }
         }
         
         # Add tools if available
@@ -252,9 +261,9 @@ class GeminiLiveAgent(BaseAgent):
                 logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} bytes)")
             
             elif event.type == "audio.done":
-                # Don't send audio_stream_end - let Gemini's VAD handle turn detection
-                # Sending audio_stream_end too early causes interruptions
-                logger.debug(f"[{self.role}] Audio done received, letting VAD handle turn detection")
+                # Signal end of user's audio turn - Gemini needs this to start responding
+                logger.debug(f"[{self.role}] Audio done received, sending audio_stream_end")
+                await self._session.send_realtime_input(audio_stream_end=True)
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)
