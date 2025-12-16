@@ -124,9 +124,13 @@ class AudioCollector:
                 turn["transcript"] = transcript
                 break
 
-    def finalize(self):
+    def finalize(self, success: Optional[bool] = None, reward: Optional[float] = None):
         """
         Close the WAV and write the metadata JSON describing the conversation turns.
+        
+        Args:
+            success: Whether the task was completed successfully
+            reward: The reward/score for the conversation
         """
         # If there is an open turn, close it at the current moment
         if self._current_turn is not None:
@@ -150,6 +154,13 @@ class AudioCollector:
             "total_samples": self._samples_written,
             "turns": self._turns,
         }
+        
+        # Add success and reward if provided
+        if success is not None:
+            meta["success"] = success
+        if reward is not None:
+            meta["reward"] = reward
+        
         with open(self.output_meta_path, "w") as fp:
             json.dump(meta, fp, indent=2)
 

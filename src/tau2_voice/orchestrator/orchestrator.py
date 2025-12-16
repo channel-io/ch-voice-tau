@@ -113,11 +113,16 @@ class VoiceOrchestrator:
             )
             simulation_run.reward_info = reward_info
             
+            # Calculate success and finalize audio collector with metadata
+            reward = reward_info.reward if reward_info else 0.0
+            success = reward >= 1.0
+            self.collector.finalize(success=success, reward=reward)
+            
             # Log results
             logger.info(f"Simulation completed")
             logger.info(f"Termination reason: {simulation_run.termination_reason}")
             logger.info(f"Duration: {simulation_run.duration:.2f}s")
-            logger.info(f"Reward: {reward_info.reward}")
+            logger.info(f"Reward: {reward}")
             if reward_info.db_check:
                 logger.info(f"DB Match: {reward_info.db_check.db_match}")
                 logger.info(f"DB Reward: {reward_info.db_check.db_reward}")
@@ -126,6 +131,11 @@ class VoiceOrchestrator:
         except Exception as e:
             logger.error(f"Error during evaluation: {e}")
             logger.error(f"Message count: {len(simulation_run.messages)}")
+            # Finalize collector even on error (without success/reward)
+            try:
+                self.collector.finalize()
+            except:
+                pass
             raise
         
         return simulation_run
@@ -169,11 +179,10 @@ Your scenario: {scenario_str}"""
             t.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        # Finalize collector before closing participants
-        try:
-            self.collector.finalize()
-        finally:
-            pass
+        
+        # Note: collector.finalize() is called in run() after evaluation
+        # to include success and reward information
+        
         await asyncio.gather(self.assistant.disconnect(), self.user.disconnect())
         logger.info("Participants disconnected")
         
