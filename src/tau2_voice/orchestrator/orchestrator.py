@@ -320,6 +320,8 @@ Your scenario: {scenario_str}"""
                 turn_idx=self.turn_idx,
                 cost=0.0,
             )
+            # Forward assistant transcript to user simulator so it can react (text-based context).
+            await self.user.publish(event)
         else:  # user
             msg = UserMessage(
                 role="user",
@@ -329,8 +331,7 @@ Your scenario: {scenario_str}"""
                 cost=0.0,
             )
             # Forward user transcript to assistant (for text-based agents like Gemini)
-            target = self.assistant if source == self.user else self.user
-            await target.publish(event)
+            await self.assistant.publish(event)
         self.messages.append(msg)
         self.turn_idx += 1
 

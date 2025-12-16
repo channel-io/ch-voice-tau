@@ -23,9 +23,29 @@ class RealtimeEventAdapter(BaseEventAdapter):
     def wrap_event(self, event: Event) -> RealtimeClientEvent | None:
         match event.type:
             case "audio.chunk":
-                return InputAudioBufferAppend(
-                    audio=event.audio_chunk
-                )
+                # NOTE: OpenAI Realtime input audio is always treated as "user" audio by the API.
+                # For the *user simulator* session (self.role == "user"), assistant audio MUST NOT
+                # be fed as input audio, or the simulator will transcribe the assistant's words as
+                # if they were spoken by the user and start responding like an assistant.
+                if self.role == "assistant":
+                    return InputAudioBufferAppend(
+                        audio=event.audio_chunk
+                    )
+                return None
+            case "transcript.update":
+                # For the user simulator, inject the assistant's transcript as a conversation item
+                # (role="assistant") so the simulator can react as the customer.
+                if self.role == "user" and getattr(event, "role", None) == "assistant":
+                    item = {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "input_text", "text": event.transcript}],
+                    }
+                    logger.info(
+                        f"Sending assistant transcript to user simulator via conversation item: {event.transcript[:120]}"
+                    )
+                    return ConversationItemCreate(item=item)
+                return None
             case "speak.request":
                 return ResponseCreate(
                     response=ResponseRequest(

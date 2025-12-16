@@ -154,6 +154,8 @@ class GeminiLiveAgent(BaseAgent):
         # Track current message for audio chunks
         self._current_message_id: Optional[str] = None
         self._message_counter = 0
+        # Gemini streams partial output transcription; buffer until turn_complete
+        self._current_transcript: str = ""
         
         # Pending tool calls
         self._pending_tool_calls: dict = {}
@@ -371,11 +373,18 @@ class GeminiLiveAgent(BaseAgent):
                     logger.info(f"[{self.role}] Generation interrupted")
                     # Send audio done event to signal interruption
                     if self._current_message_id:
+                        if self._current_transcript.strip():
+                            await self._event_queue.put(TranscriptUpdateEvent(
+                                role=self.role,
+                                message_id=self._current_message_id,
+                                transcript=self._current_transcript.strip()
+                            ))
                         await self._event_queue.put(AudioDoneEvent(
                             role=self.role,
                             message_id=self._current_message_id
                         ))
                         self._current_message_id = None
+                        self._current_transcript = ""
                     return
                 
                 # Handle model turn (audio output)
@@ -390,6 +399,7 @@ class GeminiLiveAgent(BaseAgent):
                                 if self._current_message_id is None:
                                     self._message_counter += 1
                                     self._current_message_id = f"gemini_{self._message_counter}"
+                                    self._current_transcript = ""
                                     logger.info(f"[{self.role}] Started new audio response: {self._current_message_id}")
                                 
                                 # Convert to base64 and send audio chunk
@@ -404,12 +414,14 @@ class GeminiLiveAgent(BaseAgent):
                 # Handle output transcription
                 if hasattr(server_content, 'output_transcription') and server_content.output_transcription:
                     transcript = server_content.output_transcription.text
-                    if transcript and self._current_message_id:
-                        await self._event_queue.put(TranscriptUpdateEvent(
-                            role=self.role,
-                            message_id=self._current_message_id,
-                            transcript=transcript
-                        ))
+                    if transcript:
+                        # Ensure we have a message id even if transcription arrives before audio bytes
+                        if self._current_message_id is None:
+                            self._message_counter += 1
+                            self._current_message_id = f"gemini_{self._message_counter}"
+                            self._current_transcript = ""
+                            logger.info(f"[{self.role}] Started new response (transcript): {self._current_message_id}")
+                        self._current_transcript += transcript
                 
                 # Handle input transcription (from user audio)
                 if hasattr(server_content, 'input_transcription') and server_content.input_transcription:
@@ -421,12 +433,19 @@ class GeminiLiveAgent(BaseAgent):
                 if hasattr(server_content, 'turn_complete') and server_content.turn_complete:
                     logger.info(f"[{self.role}] Turn complete received")
                     if self._current_message_id:
+                        if self._current_transcript.strip():
+                            await self._event_queue.put(TranscriptUpdateEvent(
+                                role=self.role,
+                                message_id=self._current_message_id,
+                                transcript=self._current_transcript.strip()
+                            ))
                         await self._event_queue.put(AudioDoneEvent(
                             role=self.role,
                             message_id=self._current_message_id
                         ))
                         logger.info(f"[{self.role}] Sent AudioDoneEvent for {self._current_message_id}")
                         self._current_message_id = None
+                        self._current_transcript = ""
             
             # Handle tool calls
             if hasattr(response, 'tool_call') and response.tool_call:

@@ -70,9 +70,10 @@ class UserAgent(RealtimeAgent):
         voice: str = "ash",
         **kwargs,
     ):
-        super().__init__(tools=tools, domain_policy=None, role="user")
+        # IMPORTANT: pass through kwargs (e.g. model=...) so callers can control the
+        # underlying Realtime model used for the user simulator.
+        super().__init__(tools=tools, domain_policy=None, role="user", voice=voice, **kwargs)
         self.instructions = instructions
-        self.voice = voice
         
     @property
     def global_simulation_guidelines(self) -> str:
