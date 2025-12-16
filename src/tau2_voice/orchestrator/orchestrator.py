@@ -238,7 +238,9 @@ Your scenario: {scenario_str}"""
             self.collector.handle_audio_done(role=event.role, message_id=event.message_id)
         except Exception:
             pass
-        # override the VAD with manual speak request to continue the dialog
+        # Forward audio.done to target first (needed for turn-based agents like Qwen3-Omni)
+        await target.publish(event)
+        # Then send speak request to trigger response generation
         await target.publish(SpeakRequestEvent())
 
     async def _handle_transcript_update(self, event: TranscriptUpdateEvent, source: BaseAgent):

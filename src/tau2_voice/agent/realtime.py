@@ -12,7 +12,6 @@ from tau2_voice.models.tool import Tool
 from tau2_voice.agent.base import BaseAgent
 from tau2_voice.models.events import Event
 from tau2_voice.adapters.realtime import RealtimeEventAdapter
-from tau2_voice.audio.sink import SpeakerSink
 from tau2_voice.config import VoiceTauConfig
 from tau2_voice.models.external.realtime import (
     ResponseCreate, Session, RealtimeClientEvent, Audio, AudioInput, AudioFormat, NoiseReduction, 
@@ -87,7 +86,7 @@ class RealtimeAgent(BaseAgent):
             await self._send_event(wrapped_event)
 
     @override
-    async def subscribe(self) -> AsyncGenerator[Event]:
+    async def subscribe(self) -> AsyncGenerator[Event, None]:
         if self._ws is None:
             return
         async for raw in self._ws:
@@ -111,6 +110,7 @@ class RealtimeAgent(BaseAgent):
         ) for tool in openai_tools]
         
         logger.info(f"[{self.role}] Registering {len(realtime_tools)} tools with Realtime API: {[t.name for t in realtime_tools]}")
+        logger.info(f"[{self.role}] Session instructions (first 200 chars): {self.system_prompt if self.system_prompt else 'None'}...")
         
         session = Session(
             instructions=self.system_prompt,

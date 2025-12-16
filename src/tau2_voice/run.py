@@ -79,7 +79,13 @@ async def run_task(
     assistant_tools = environment.get_tools()
     logger.info(f"Assistant tools: {[tool.name for tool in assistant_tools]}")
     
-    AssistantConstructor = registry.get_agent_constructor("realtime_agent")
+    # Select agent based on model name
+    if assistant_model.startswith("qwen3"):
+        agent_name = "qwen3_omni_agent"
+    else:
+        agent_name = "realtime_agent"
+    
+    AssistantConstructor = registry.get_agent_constructor(agent_name)
     assistant = AssistantConstructor(
         tools=assistant_tools,
         domain_policy=environment.get_policy(),
@@ -228,14 +234,15 @@ async def run_all_tasks(
 
 
 if __name__ == "__main__":
-    domain = "retail" # airline, retail, telecom
+    domain = "airline" # airline, retail, telecom
     
     # Model selection
-    assistant_model = "gpt-realtime-mini-2025-10-06"  # or "gpt-realtime-mini-2025-10-06"
+    # assistant_model = "gpt-realtime-mini-2025-10-06"  # or "gpt-realtime-mini-2025-10-06"
+    assistant_model = "qwen3_omni"
     user_model = "gpt-realtime-2025-08-28"
     
     # Run all tasks (or specify task_ids or num_tasks)
-    num_tasks = 1  # Run first task only
+    num_tasks = 50  # Run first task only
     task_ids = None  # Set to None to use num_tasks, or specify IDs for airline/retail
     
     # For telecom, use num_tasks since task IDs are complex strings
@@ -243,9 +250,9 @@ if __name__ == "__main__":
     
     results, accuracy = asyncio.run(run_all_tasks(
         domain=domain,
-        #task_ids=task_ids,
-        # num_tasks=num_tasks,
-        batch_size=10,  # Run 10 tasks in parallel
+        task_ids=["49"],
+        num_tasks=num_tasks,
+        batch_size=5,  # Run 10 tasks in parallel
         assistant_model=assistant_model,
         user_model=user_model,
     ))
