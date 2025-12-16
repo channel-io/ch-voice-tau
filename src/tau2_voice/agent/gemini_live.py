@@ -269,24 +269,25 @@ class GeminiLiveAgent(BaseAgent):
         
         try:
             if event.type == "audio.chunk":
-                # Send audio chunk to Gemini
-                audio_data = base64.b64decode(event.audio_chunk)
-                # Resample from 24kHz (OpenAI) to 16kHz (Gemini)
-                resampled_data = resample_audio_24k_to_16k(audio_data)
-                await self._session.send_realtime_input(
-                    audio=types.Blob(
-                        data=resampled_data,
-                        mime_type="audio/pcm;rate=16000"
-                    )
-                )
-                logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} -> {len(resampled_data)} bytes, resampled)")
+                # Skip audio chunks - we'll use transcript instead for more reliable response
+                # VAD with audio input is unreliable
+                pass
             
             elif event.type == "audio.done":
-                # Signal end of user's audio turn - just send audio_stream_end
-                # Don't send silence as it can interrupt Gemini's generation
-                logger.debug(f"[{self.role}] Audio done received, sending audio_stream_end")
-                await self._session.send_realtime_input(audio_stream_end=True)
-                logger.debug(f"[{self.role}] Sent audio_stream_end, waiting for Gemini response")
+                # Skip audio done - we'll use transcript instead
+                pass
+            
+            elif event.type == "transcript.update":
+                # Send user's transcript as text instead of audio
+                # This is more reliable than VAD-based audio processing
+                transcript = event.transcript if hasattr(event, 'transcript') else ""
+                if transcript:
+                    logger.info(f"[{self.role}] Received user transcript, sending as text: {transcript[:100]}...")
+                    await self._session.send_client_content(
+                        turns=[{"role": "user", "parts": [{"text": transcript}]}],
+                        turn_complete=True
+                    )
+                    logger.info(f"[{self.role}] Sent transcript to Gemini, waiting for response")
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)

@@ -328,6 +328,9 @@ Your scenario: {scenario_str}"""
                 turn_idx=self.turn_idx,
                 cost=0.0,
             )
+            # Forward user transcript to assistant (for text-based agents like Gemini)
+            target = self.assistant if source == self.user else self.user
+            await target.publish(event)
         self.messages.append(msg)
         self.turn_idx += 1
 
