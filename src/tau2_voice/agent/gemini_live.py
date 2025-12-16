@@ -37,13 +37,19 @@ except ImportError:
 
 def flatten_json_schema(schema: dict) -> dict:
     """
-    Flatten JSON Schema by inlining $ref references and removing $defs.
-    Gemini API doesn't support $ref/$defs in function parameters.
+    Flatten JSON Schema by inlining $ref references and removing unsupported fields.
+    Gemini API doesn't support $ref/$defs/additionalProperties in function parameters.
     """
     if not isinstance(schema, dict):
         return schema
     
     defs = schema.pop("$defs", {})
+    
+    # Fields not supported by Gemini Live API
+    UNSUPPORTED_FIELDS = {
+        "$defs", "$ref", "additionalProperties", "additional_properties",
+        "title", "default", "$schema"
+    }
     
     def resolve_refs(obj):
         if isinstance(obj, dict):
@@ -57,7 +63,8 @@ def flatten_json_schema(schema: dict) -> dict:
                         return resolve_refs(defs[type_name].copy())
                 return {"type": "object"}  # Fallback
             
-            return {k: resolve_refs(v) for k, v in obj.items()}
+            # Remove unsupported fields and recurse
+            return {k: resolve_refs(v) for k, v in obj.items() if k not in UNSUPPORTED_FIELDS}
         elif isinstance(obj, list):
             return [resolve_refs(item) for item in obj]
         return obj
@@ -71,17 +78,13 @@ def flatten_json_schema(schema: dict) -> dict:
             if "items" in obj and isinstance(obj["items"], dict):
                 if "anyOf" in obj["items"] and len(obj["items"]["anyOf"]) == 1:
                     obj["items"] = simplify_anyof(obj["items"]["anyOf"][0])
-            return {k: simplify_anyof(v) for k, v in obj.items()}
+            return {k: simplify_anyof(v) for k, v in obj.items() if k not in UNSUPPORTED_FIELDS}
         elif isinstance(obj, list):
             return [simplify_anyof(item) for item in obj]
         return obj
     
     result = resolve_refs(schema)
     result = simplify_anyof(result)
-    
-    # Remove any remaining $defs that might have been copied
-    if "$defs" in result:
-        del result["$defs"]
     
     return result
 
