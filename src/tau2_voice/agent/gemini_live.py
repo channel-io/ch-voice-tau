@@ -177,13 +177,13 @@ class GeminiLiveAgent(BaseAgent):
             # Enable transcription for both input and output
             "input_audio_transcription": {},
             "output_audio_transcription": {},
-            # VAD configuration - more responsive
+            # VAD configuration - wait for clear end of speech
             "realtime_input_config": {
                 "automatic_activity_detection": {
                     "disabled": False,
-                    "start_of_speech_sensitivity": "START_SENSITIVITY_HIGH",
-                    "end_of_speech_sensitivity": "END_SENSITIVITY_HIGH",
-                    "silence_duration_ms": 500,  # 500ms silence triggers response
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_LOW",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_LOW",
+                    "silence_duration_ms": 1000,  # 1 second silence before response
                 }
             }
         }
@@ -282,19 +282,11 @@ class GeminiLiveAgent(BaseAgent):
                 logger.debug(f"[{self.role}] Sent audio chunk ({len(audio_data)} -> {len(resampled_data)} bytes, resampled)")
             
             elif event.type == "audio.done":
-                # Signal end of user's audio turn
-                logger.debug(f"[{self.role}] Audio done received, sending silence + audio_stream_end")
-                # Send longer silence to help VAD detect end of speech (1 second)
-                silence = b'\x00' * 32000  # 1000ms of silence at 16kHz mono 16-bit
-                await self._session.send_realtime_input(
-                    audio=types.Blob(
-                        data=silence,
-                        mime_type="audio/pcm;rate=16000"
-                    )
-                )
-                # Then signal audio stream end
+                # Signal end of user's audio turn - just send audio_stream_end
+                # Don't send silence as it can interrupt Gemini's generation
+                logger.debug(f"[{self.role}] Audio done received, sending audio_stream_end")
                 await self._session.send_realtime_input(audio_stream_end=True)
-                logger.debug(f"[{self.role}] Sent 1s silence + audio_stream_end, waiting for Gemini response")
+                logger.debug(f"[{self.role}] Sent audio_stream_end, waiting for Gemini response")
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)
