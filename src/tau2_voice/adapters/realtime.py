@@ -33,16 +33,21 @@ class RealtimeEventAdapter(BaseEventAdapter):
                     )
                 return None
             case "transcript.update":
-                # For the user simulator, inject the assistant's transcript as a conversation item
-                # (role="assistant") so the simulator can react as the customer.
+                # IMPORTANT: For the user simulator session, the OpenAI Realtime model is still the
+                # "assistant" role at the API level. To make it *act like the customer*, we should
+                # feed the real agent's utterance as a **user** message, so the model responds as
+                # "assistant" (which we reinterpret as the customer in our system).
+                #
+                # If we inject the agent's utterance with role="assistant", the model tends to
+                # continue speaking like an agent (it sees those as its own prior outputs).
                 if self.role == "user" and getattr(event, "role", None) == "assistant":
                     item = {
                         "type": "message",
-                        "role": "assistant",
+                        "role": "user",
                         "content": [{"type": "input_text", "text": event.transcript}],
                     }
                     logger.info(
-                        f"Sending assistant transcript to user simulator via conversation item: {event.transcript[:120]}"
+                        f"Sending agent transcript to user simulator as role=user: {event.transcript[:120]}"
                     )
                     return ConversationItemCreate(item=item)
                 return None
