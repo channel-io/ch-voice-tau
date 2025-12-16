@@ -1,310 +1,205 @@
-# $\tau^2$-Bench: Evaluating Conversational Agents in a Dual-Control Environment
+# TAU2-Voice: Voice-based Conversational Agent Evaluation
 
-[![python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![python](https://img.shields.io/badge/Python-3.12%2B-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
 [![arXiv](http://img.shields.io/badge/cs.AI-arXiv%3A2506.07982-B31B1B.svg?logo=arxiv&logoColor=red)](https://arxiv.org/abs/2506.07982)
-[![blog](https://img.shields.io/badge/blog-tau2--bench-green)](https://sierra.ai/blog/benchmarking-agents-in-collaborative-real-world-scenarios)
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/sierra.svg?style=social&label=Follow%20%40SierraPlatform)](https://x.com/SierraPlatform/status/1932464265207889974)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?logo=linkedin&logoColor=white)](https://www.linkedin.com/posts/sierra_last-year-we-introduced-%F0%9D%9C%8F-bench-a-benchmark-activity-7338229693898231809-F8L4?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAdc8goBmhEsiEo1_t_XSJbAnY4_zMfAWcE)
 
-<div align="center">
-<img src="figs/overview.png" width="95%" alt="System Overview"><br>
-<em>Figure 1: τ²-bench allows users to interact with the agent and the environment</em>
-</div>
-
-<div align="center">
-<img src="figs/traj.png" width="95%" alt="Trajectory"><br>
-<em>Figure 2: Trajectory of a conversation between an agent and a user</em>
-</div>
+Voice-based extension of [TAU2-Bench](https://arxiv.org/abs/2506.07982) for evaluating real-time voice agents in customer service scenarios.
 
 ## Overview
 
-$\tau^2$-bench implements a simulation framework for evaluating customer service agents across various domains.
+TAU2-Voice extends the TAU2 framework to evaluate voice-based conversational agents using real-time audio interactions. Unlike text-based evaluation, voice introduces unique challenges including acoustic ambiguity, role confusion, and authentication vulnerabilities.
 
-Each domain specifies:
-- a policy that the agent must follow
-- a set of tools that the agent can use
-- a set of tasks to evaluate the agent's performance
-- Optionally: A set of tools that the user simulator can use
+### Supported Models
 
-Domains are:
-- `mock`
-- `airline`
-- `retail`
-- `telecom`
+- **OpenAI Realtime API** (`gpt-realtime-2025-08-28`, `gpt-realtime-mini-2025-10-06`)
+- **Qwen3-Omni** (via vLLM server)
+- **Gemini Live API** (`gemini-2.5-flash-native-audio-preview-12-2025`)
 
-All the information that an agent developer needs to build an agent for a domain can be accessed through the domain's API docs. See [View domain documentation](#view-domain-documentation) for more details.
+## Performance Comparison
+
+Voice-based evaluation shows significant performance degradation compared to text-based evaluation:
+
+| Model | Retail | Airline | Telecom |
+|-------|--------|---------|---------|
+| **Text-based Baselines** | | | |
+| GPT-4o-2024-11-20 | 67.3 | 46.9 | 24.1 |
+| GPT-4.1 | 70.2 | 53.0 | 38.9 |
+| **Voice-based Baselines** | | | |
+| gpt-realtime | **43.9** | **40.0** | **0.088** |
+| Qwen3-Omni-30B-A3B-Instruct | - | **30.6** | **0.00** |
+| gpt-realtime-mini | **13.2** | **18.0** | **0.00** |
+
+**Key Observations:**
+- Voice-based agents show **30-40% performance drop** in Retail and Airline domains
+- **Near-zero performance** in complex multi-turn Telecom domain
+- Challenges include acoustic ambiguity, role confusion, and difficulty maintaining conversation context
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/sierra-research/tau2-bench
-cd tau2-bench
+git clone https://github.com/channel-io/ch-voice-tau.git
+cd ch-voice-tau
 ```
 
-2. Create a new environment (optional)
-
-$\tau^2$-bench requires Python 3.10 or higher. You may create and activate a new environment:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-3. Install tau2
-
+2. Install dependencies:
 ```bash
 pip install -e .
 ```
 
-This will enable you to run the `tau2` command.
-
-**Note:** If you use `pip install .` (without `-e`), you'll need to set the `TAU2_DATA_DIR` environment variable to point to your data directory:
-
+3. Set up API keys:
 ```bash
-export TAU2_DATA_DIR=/path/to/your/tau2-bench/data
-```
-
-**Check your data directory setup:**
-
-After installation, you can verify that your data directory is correctly configured by running:
-
-```bash
-tau2 check-data
-```
-
-This command will check if the data directory exists and print instructions if it is missing.
-
-To remove all the generated files and the virtual environment, run:
-```bash
-make clean
+export OPENAI_API_KEY="your-openai-key"
+export GOOGLE_API_KEY="your-google-key"  # For Gemini
 ```
 
 ## Quick Start
 
-### Setup LLM API keys
-
-We use [LiteLLM](https://github.com/BerriAI/litellm) to manage LLM APIs, so you can use any LLM provider supported by LiteLLM.
-
-To provide your API keys, copy `.env.example` as `.env` and edit it to include your API keys.
-
-### Run agent evaluation
-
-To run a test evaluation on only 5 tasks with 1 trial per task, run:
+### Running Voice-based Evaluation
 
 ```bash
-tau2 run \ 
---domain airline \
---agent-llm gpt-4.1 \
---user-llm gpt-4.1 \
---num-trials 1 \
---num-tasks 5
+python -m tau2_voice.run
 ```
 
-Results will be saved in `data/tau2/simulations/`.
+Edit `src/tau2_voice/run.py` to configure:
+- `domain`: "airline", "retail", or "telecom"
+- `assistant_model`: Model for the agent
+- `user_model`: Model for the user simulator
+- `num_tasks`: Number of tasks to evaluate
+- `batch_size`: Parallel task execution
 
-## Command Line Interface
+### Example: Run with Gemini Live
 
-The `tau2` command provides a unified interface for all functionality:
+```python
+# In src/tau2_voice/run.py
+assistant_model = "gemini-2.5-flash-native-audio-preview-12-2025"
+user_model = "gpt-realtime-2025-08-28"
+```
 
-### Running Benchmark 
+### Example: Run with Qwen3-Omni
+
+1. Start vLLM server:
 ```bash
-tau2 run \
-  --domain <domain> \
-  --agent-llm <llm_name> \
-  --user-llm <llm_name> \
-  --num-trials <trial_count> \
-  --task-ids <task_ids> \
-  --max-concurrency <concurrent_sims> \
-  ...
+cd /path/to/vllm-exp
+bash run_qwen3_omni.sh
 ```
 
-### Viewing Results
-```bash
-tau2 view
-```
-This tool allows you to:
-- Browse simulation files (in `data/tau2/simulations/`)
-- View agent performance metrics
-- View a particular simulation
-- View task details
-
-### View domain documentation
-```bash
-tau2 domain <domain>
-```
-Visit http://127.0.0.1:8004/redoc to see the domain policy and API documentation.
-
-![domain_viewer1](figs/domain_viewer.png)
-
-### Check data configuration
-```bash
-tau2 check-data
-```
-This command checks if your data directory is properly configured and all required files are present.
-
-## Experiments
-
-### Running Ablation Studies (No User, or Agent with Oracle Plan)
-`telecom` domain enables running ablation studies.
-
-1. Running an LLM in `no-user` mode. In this mode, the LLM is given all the tools and the information upfront.
-Just choose `llm_agent_solo` as the agent and `dummy_user` as the user.
-
-```bash
-tau2 run \
-  --domain telecom \
-  --agent llm_agent_solo \
-  --agent-llm gpt-4.1 \
-  --user dummy_user \
-  ...
+2. Run evaluation:
+```python
+# In src/tau2_voice/run.py
+assistant_model = "qwen3_omni"
+user_model = "gpt-realtime-2025-08-28"
 ```
 
-2. Running an LLM in `oracle-plan` mode. In this mode, the LLM is given an oracle plan ahead of time alleviating the need for action planning.
-Just choose `llm_agent_gt` as the agent.
+## Architecture
 
-```bash
-tau2 run \
-  --domain telecom \
-  --agent llm_agent_gt \
-  --agent-llm gpt-4.1 \
-  --user-llm gpt-4.1 \
-  ...
+### Event-driven Voice Pipeline
+
+```
+User Simulator (OpenAI Realtime)
+    ↓ audio.chunk, transcript.update
+Orchestrator
+    ↓ audio.chunk, transcript.update, tool_call.request
+Assistant Agent (Gemini/Qwen3/OpenAI)
+    ↓ audio.chunk, transcript.update, tool_call.result
+Environment (Tools & State)
 ```
 
-### Running Telecom Domain with Workflow Policy
-To test the impact of policy format, we provide an additional "workflow" policy for the telecom domain.
-To run using this policy, use the `telecom-workflow` domain.
+### Key Components
 
-```bash
-tau2 run \
-  --domain telecom-workflow \
-  --agent-llm gpt-4.1 \
-  --user-llm gpt-4.1 \
-  ...
+- **Agents** (`src/tau2_voice/agent/`)
+  - `RealtimeAgent`: OpenAI Realtime API
+  - `Qwen3OmniAgent`: Qwen3-Omni via vLLM
+  - `GeminiLiveAgent`: Google Gemini Live API
+  - `UserAgent`: User simulator (OpenAI Realtime)
+
+- **Orchestrator** (`src/tau2_voice/orchestrator/`)
+  - Routes events between agents
+  - Manages conversation flow
+  - Records audio and transcripts
+  - Evaluates task completion
+
+- **Event Adapters** (`src/tau2_voice/adapters/`)
+  - Convert between internal events and API-specific formats
+  - Handle audio encoding/resampling
+  - Prevent role confusion in user simulator
+
+- **Audio Collection** (`src/tau2_voice/audio/`)
+  - Records audio chunks to WAV files
+  - Tracks transcripts and tool calls
+  - Generates metadata JSON
+
+## Recordings
+
+Conversation recordings are saved in `data/recordings/<domain>/`:
+- `{domain}_{task_id}_{timestamp}.wav`: Audio recording
+- `{domain}_{task_id}_{timestamp}.json`: Metadata (transcripts, tool calls, success, reward)
+
+## Key Features
+
+### 1. Multi-modal Agent Support
+Seamlessly integrate text-to-speech, speech-to-text, and native audio models.
+
+### 2. User Simulator Guardrails
+Prevents role confusion with:
+- Deterministic customer opening from scenario
+- Detection of agent-like phrases ("How can I help you", "Let me check that")
+- Automatic retry on role drift (max 2 attempts)
+
+### 3. Audio Resampling
+Automatic audio format conversion between different APIs:
+- OpenAI Realtime: 24kHz PCM
+- Gemini Live: 16kHz PCM
+- Qwen3-Omni: WAV with header
+
+### 4. Tool Call Recording
+Full conversation context including:
+- Tool call requests and responses
+- Success/reward metrics
+- Turn-by-turn transcripts
+
+## Development
+
+### Adding a New Agent
+
+1. Create agent class in `src/tau2_voice/agent/`:
+```python
+from tau2_voice.agent.base import BaseAgent
+
+class MyAgent(BaseAgent):
+    async def connect(self): ...
+    async def disconnect(self): ...
+    async def publish(self, event: Event): ...
+    async def subscribe(self) -> AsyncGenerator[Event, None]: ...
 ```
 
-## Domains
-
-For all the details see the domains [README](src/tau2/domains/README.md).
-
-### Basics
-
-- Code is located in `src/tau2/domains/`
-- Data is located in `data/tau2/domains/`
-- Each domain has its own configuration and task definitions
-
-#### View domain-specific policy and API docs:
-Run the following command to see the domain policy and API documentation.
-```bash
-tau2 env <domain>
+2. Register in `src/tau2_voice/registry.py`:
+```python
+registry.register_agent(MyAgent, "my_agent")
 ```
 
-Then visit http://127.0.0.1:8004/redoc
-
-### Environment CLI (beta)
-
-An interactive command-line interface for directly querying and testing domain environments. Features:
-- Interactive query interface with domain-specific tools
-- Support for multiple domains (airline, mock, etc.)
-- Session management with history
-
-To use:
-```bash
-make env-cli
+3. Update model selection in `src/tau2_voice/run.py`:
+```python
+if assistant_model.startswith("my_model"):
+    agent_name = "my_agent"
 ```
 
-Available commands:
-- `:q` - quit the program
-- `:d` - change domain
-- `:n` - start new session (clears history)
+## Known Issues
 
-Example usage:
-```bash
-$ make env-cli
+### Voice-specific Challenges
 
-Welcome to the Environment CLI!
-Connected to airline domain.
+1. **Role Confusion**: User simulator may adopt agent role due to audio feedback loops
+   - Mitigated with guardrails and conversation.item.create injection
 
-Query (:n new session, :d change domain, :q quit)> What flights are available from SF to LA tomorrow?
-Assistant: Let me check the flight availability for you...
-[Flight details will appear here]
-```
+2. **Acoustic Ambiguity**: Spelling of IDs, codes, phone numbers prone to errors
+   - Models may mishear "AA1234" as "A1234" or "8A1234"
 
-The Environment CLI is useful for:
-- Testing domain tools and queries
-- Debugging environment responses
-- Exploring available domain functionality
-- Quick domain interaction without starting the full server stack
+3. **VAD Instability**: Voice Activity Detection varies across providers
+   - Gemini Live: Uses text-based turn-taking for reliability
+   - OpenAI Realtime: Semantic VAD enabled by default
 
-
-## Run tests
-To run the test suite use the command
-
-```sh
-make test
-```
-
-## Config
-
-To configure the framework, see the [config](src/tau2/config.py) file.
-
-### LLM Calls caching
-LLM call caching is disabled by default.
-
-To enable LLM calls caching:
-    - Make sure `redis` is running.
-    - Update the redis config in `config.py` if necessary.
-    - Set `LLM_CACHE_ENABLED` to `True` in `config.py`
-
-
-## Evaluate Your Own Agent
-For local or remote agent evaluation, see our [agent developer guide](src/tau2/agent/README.md).
-
-## Orchestration Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant O as Orchestrator
-    participant A as Agent
-    participant U as UserSimulator
-    participant E as Environment
-
-    Note over O: Initialize(task)
-    rect rgb(100, 150, 150)
-        O->>A: get_init_state_info(message_history)
-        A->>O: agent_state_info
-        O->>U: get_init_state_info(message_history)
-        U->>O: user_state_info
-        O->>E: set_state(initialization_data, initialization_actions, message_history)
-    end
-    Note over O: Start simulation
-    loop Pass messages between Agent, User, and Environment
-
-        alt Agent/Env to User
-            rect rgb(200, 150, 150)
-            O->>U: generate_next_message(msg, user_state_info)
-            U-->>O: (user_msg, user_state_info)
-            end
-            Note over O: Check if user_msg is STOP
-        else User/Env to Agent
-            rect rgb(100, 200, 100)
-            O->>A: generate_next_message(msg, agent_state_info)
-            A-->>O: (assistant_msg, agent_state_info)
-            Note over O: Check if too many errors
-            end
-        else User/Agent to Environment
-            rect rgb(150, 150, 200)
-            O->>E: get_response(tool_call)
-            E-->>O: tool_message
-            end
-        end
-        Note over O: Check if max turns reached.
-    end
-    Note over O: Return simulation run
-```
+4. **Multi-turn Context**: Voice agents lose context faster than text agents
+   - Especially problematic in Telecom domain (30+ turn conversations)
 
 ## Citation
 
@@ -319,3 +214,7 @@ sequenceDiagram
       url={https://arxiv.org/abs/2506.07982}, 
 }
 ```
+
+## License
+
+See [LICENSE](LICENSE) file.
