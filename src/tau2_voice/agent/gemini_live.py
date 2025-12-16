@@ -284,8 +284,8 @@ class GeminiLiveAgent(BaseAgent):
             elif event.type == "audio.done":
                 # Signal end of user's audio turn
                 logger.debug(f"[{self.role}] Audio done received, sending silence + audio_stream_end")
-                # Send a short silence to help VAD detect end of speech
-                silence = b'\x00' * 3200  # 100ms of silence at 16kHz mono 16-bit
+                # Send longer silence to help VAD detect end of speech (1 second)
+                silence = b'\x00' * 32000  # 1000ms of silence at 16kHz mono 16-bit
                 await self._session.send_realtime_input(
                     audio=types.Blob(
                         data=silence,
@@ -294,7 +294,7 @@ class GeminiLiveAgent(BaseAgent):
                 )
                 # Then signal audio stream end
                 await self._session.send_realtime_input(audio_stream_end=True)
-                logger.debug(f"[{self.role}] Sent audio_stream_end, waiting for Gemini response")
+                logger.debug(f"[{self.role}] Sent 1s silence + audio_stream_end, waiting for Gemini response")
             
             elif event.type == "speak.request":
                 # For text-based requests (like after tool calls)
