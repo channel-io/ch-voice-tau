@@ -71,6 +71,7 @@ class GeminiLiveAgent(BaseAgent):
         # Gemini client
         self._client = genai.Client(api_key=VoiceTauConfig.GOOGLE_API_KEY)
         self._session = None
+        self._session_context = None  # Context manager for session
         self._is_connected = False
         
         # Event queue for async generator
@@ -137,10 +138,12 @@ class GeminiLiveAgent(BaseAgent):
         config = self._build_config()
         
         try:
-            self._session = await self._client.aio.live.connect(
+            # Get the context manager and manually enter it
+            self._session_context = self._client.aio.live.connect(
                 model=self.model,
                 config=config
             )
+            self._session = await self._session_context.__aenter__()
             self._is_connected = True
             
             # Start receive loop
@@ -164,11 +167,13 @@ class GeminiLiveAgent(BaseAgent):
                 pass
             self._receive_task = None
         
-        if self._session:
+        # Exit the context manager properly
+        if self._session_context:
             try:
-                self._session.close()
+                await self._session_context.__aexit__(None, None, None)
             except Exception as e:
                 logger.warning(f"Error closing Gemini session: {e}")
+            self._session_context = None
             self._session = None
         
         logger.info(f"[{self.role}] Disconnected from Gemini Live API")
