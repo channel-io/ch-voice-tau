@@ -35,6 +35,57 @@ except ImportError:
     logger.warning("google-genai not installed. Run: pip install google-genai")
 
 
+def flatten_json_schema(schema: dict) -> dict:
+    """
+    Flatten JSON Schema by inlining $ref references and removing $defs.
+    Gemini API doesn't support $ref/$defs in function parameters.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    
+    defs = schema.pop("$defs", {})
+    
+    def resolve_refs(obj):
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                # Extract reference name from "#/$defs/TypeName"
+                ref_path = obj["$ref"]
+                if ref_path.startswith("#/$defs/"):
+                    type_name = ref_path.split("/")[-1]
+                    if type_name in defs:
+                        # Return a copy of the referenced definition
+                        return resolve_refs(defs[type_name].copy())
+                return {"type": "object"}  # Fallback
+            
+            return {k: resolve_refs(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [resolve_refs(item) for item in obj]
+        return obj
+    
+    # Also handle anyOf with single $ref (common pattern)
+    def simplify_anyof(obj):
+        if isinstance(obj, dict):
+            if "anyOf" in obj and len(obj["anyOf"]) == 1:
+                # Replace anyOf with single item with the item itself
+                return simplify_anyof(obj["anyOf"][0])
+            if "items" in obj and isinstance(obj["items"], dict):
+                if "anyOf" in obj["items"] and len(obj["items"]["anyOf"]) == 1:
+                    obj["items"] = simplify_anyof(obj["items"]["anyOf"][0])
+            return {k: simplify_anyof(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [simplify_anyof(item) for item in obj]
+        return obj
+    
+    result = resolve_refs(schema)
+    result = simplify_anyof(result)
+    
+    # Remove any remaining $defs that might have been copied
+    if "$defs" in result:
+        del result["$defs"]
+    
+    return result
+
+
 class GeminiLiveAgent(BaseAgent):
     """
     Gemini Live API를 사용하는 실시간 음성 에이전트
@@ -122,9 +173,10 @@ class GeminiLiveAgent(BaseAgent):
                     "description": description,
                 }
                 
-                # Get parameters schema
+                # Get parameters schema and flatten it (remove $ref/$defs)
                 if hasattr(tool, 'params'):
-                    func_decl["parameters"] = tool.params.model_json_schema()
+                    raw_schema = tool.params.model_json_schema()
+                    func_decl["parameters"] = flatten_json_schema(raw_schema)
                 
                 function_declarations.append(func_decl)
             
