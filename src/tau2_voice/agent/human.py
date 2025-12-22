@@ -1,7 +1,8 @@
 import base64
 
 from loguru import logger
-from typing import Literal, AsyncGenerator, override, Optional
+from typing import Literal, AsyncGenerator, Optional
+from typing_extensions import override
 
 from tau2_voice.models.tool import Tool
 from tau2_voice.agent.base import BaseAgent

@@ -15,7 +15,8 @@ import asyncio
 import base64
 import json
 import struct
-from typing import Optional, Literal, AsyncGenerator, override
+from typing import Optional, Literal, AsyncGenerator
+from typing_extensions import override
 
 from loguru import logger
 
