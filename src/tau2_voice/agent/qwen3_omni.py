@@ -6,7 +6,8 @@ import asyncio
 import json
 import base64
 import re
-from typing import Optional, Literal, AsyncGenerator, override
+from typing import Optional, Literal, AsyncGenerator
+from typing_extensions import override
 
 import aiohttp
 from loguru import logger

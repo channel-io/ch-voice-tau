@@ -94,8 +94,17 @@ def _looks_like_agent_speech(text: str) -> bool:
     if not t:
         return False
     # Strong Spanish markers we saw in logs
-    if any(tok in text for tok in ["¿", "¡", "políticas", "reserva", "podrías", "claro"]):
+    # Note: Use word boundaries to avoid false positives (e.g., "reserva" in "reservation")
+    import re
+    spanish_markers = ["¿", "¡", "políticas", "podrías", "claro"]
+    # Check special characters directly
+    if any(tok in text for tok in ["¿", "¡"]):
         return True
+    # Check Spanish words with word boundaries
+    spanish_words = ["políticas", "reserva", "podrías", "claro"]
+    for word in spanish_words:
+        if re.search(rf'\b{word}\b', t):
+            return True
     # Classic agent openings / phrases
     agent_starts = (
         "hi! how can i help",
@@ -264,7 +273,15 @@ class VoiceOrchestrator:
         # Note: collector.finalize() is called in run() after evaluation
         # to include success and reward information
         
-        await asyncio.gather(self.assistant.disconnect(), self.user.disconnect())
+        # Disconnect agents (safe to call even if already disconnected)
+        try:
+            await asyncio.gather(
+                self.assistant.disconnect(),
+                self.user.disconnect(),
+                return_exceptions=True
+            )
+        except Exception as e:
+            logger.warning(f"Error during final disconnect: {e}")
         logger.info("Participants disconnected")
         
         # Debug: Log message sequence
@@ -453,6 +470,20 @@ class VoiceOrchestrator:
                 success=True,
             )
             await source.publish(result_event)
+            # Signal agents to stop by disconnecting them first
+            # This sets _is_connected = False so ongoing operations bail out early
+            try:
+                await asyncio.wait_for(self.assistant.disconnect(), timeout=1.0)
+            except asyncio.TimeoutError:
+                logger.warning("Assistant disconnect timed out")
+            except Exception as e:
+                logger.warning(f"Assistant disconnect error: {e}")
+            try:
+                await asyncio.wait_for(self.user.disconnect(), timeout=1.0)
+            except asyncio.TimeoutError:
+                logger.warning("User disconnect timed out")
+            except Exception as e:
+                logger.warning(f"User disconnect error: {e}")
             # Cancel the event loops to end the conversation
             if self._task_agent:
                 self._task_agent.cancel()
@@ -534,8 +565,8 @@ class VoiceOrchestrator:
         self.turn_idx += 1
         
         result_event = ToolCallResultEvent(
-            event_id=event.event_id,
-            message_id=event.message_id,
+            event_id=str(event.event_id),
+            message_id=str(event.message_id) if event.message_id else None,
             **tool_message.model_dump(),
         )
         await source.publish(result_event)

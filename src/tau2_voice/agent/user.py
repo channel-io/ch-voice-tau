@@ -5,7 +5,8 @@ import contextlib
 import websockets
 
 from loguru import logger
-from typing import Optional, Literal, AsyncGenerator, override
+from typing import Optional, Literal, AsyncGenerator
+from typing_extensions import override
 
 from tau2_voice.models.tool import Tool
 
