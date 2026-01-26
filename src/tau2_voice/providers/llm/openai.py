@@ -163,7 +163,6 @@ class OpenAILLMProvider(BaseLLMProvider):
         if tools:
             params["tools"] = tools_to_openai_format(tools)
             params["tool_choice"] = "auto"
-            params["parallel_tool_calls"] = True
         
         logger.debug(f"Streaming completion with {len(messages)} messages")
         

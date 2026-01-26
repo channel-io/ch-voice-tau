@@ -13,7 +13,7 @@ from tau2_voice.utils.stop_tool import stop_conversation_tool
 
 # Cascade agent imports
 from tau2_voice.agent.cascade import CascadeAgent
-from tau2_voice.providers.asr import WhisperLocalProvider
+from tau2_voice.providers.asr import WhisperLocalProvider, OpenAIASRProvider
 from tau2_voice.providers.llm import OpenAILLMProvider, LocalLLMProvider
 from tau2_voice.providers.tts import OpenAITTSProvider, ChatterboxTTSProvider
 
@@ -29,65 +29,60 @@ def load_tasks(task_set_name: str) -> list[Task]:
 
 
 def create_cascade_agent(
-    assistant_model: str,
     tools: list[Tool],
     domain_policy: str,
+    asr_model: str = "openai",
+    llm_model: str = "gpt-4o",
+    tts_model: str = "openai",
 ) -> CascadeAgent:
     """
-    Create a CascadeAgent with configured providers based on model string.
+    Create a CascadeAgent with explicitly configured providers.
     
-    Model string format: cascade[-asr][-llm][-tts]
-    Examples:
-        - "cascade" - default: whisper-large-v3, gpt-4o-mini, openai-tts
-        - "cascade-local" - fully local: whisper, Nemotron LLM, Chatterbox TTS
-        - "cascade-chatterbox" - local TTS: whisper, gpt-4o-mini, Chatterbox TTS
-        - "cascade-whisper-base" - smaller ASR model
+    Args:
+        tools: Available tools for the agent
+        domain_policy: System prompt / policy for the LLM
+        asr_model: ASR model - "openai", "whisper-large-v3", "whisper-base", etc.
+        llm_model: LLM model - "gpt-4o", "gpt-4o-mini", "nemotron"
+        tts_model: TTS model - "openai", "chatterbox"
+        
+    Returns:
+        Configured CascadeAgent instance
     """
-    # Parse model string for configuration
-    parts = assistant_model.lower().split("-")
+    # Create ASR provider
+    if asr_model == "openai":
+        asr_provider = OpenAIASRProvider(language="en")
+        logger.info("Using OpenAI ASR (Whisper API)")
+    else:
+        # Map short names to full HuggingFace model IDs
+        whisper_model_map = {
+            "whisper-large-v3": "openai/whisper-large-v3",
+            "whisper-large-v3-turbo": "openai/whisper-large-v3-turbo",
+            "whisper-large-v2": "openai/whisper-large-v2",
+            "whisper-large": "openai/whisper-large",
+            "whisper-medium": "openai/whisper-medium",
+            "whisper-small": "openai/whisper-small",
+            "whisper-base": "openai/whisper-base",
+            "whisper-tiny": "openai/whisper-tiny",
+        }
+        model_id = whisper_model_map.get(asr_model, f"openai/{asr_model}")
+        asr_provider = WhisperLocalProvider(
+            model_id=model_id,
+            device="auto",
+            language="en",
+        )
+        logger.info(f"Using local Whisper ASR: {model_id}")
     
-    # Determine LLM provider
-    use_local_llm = "local" in parts or "nemotron" in parts
-    llm_model = "gpt-4o"  # default
-    for part in parts:
-        if part in ["gpt4o", "gpt-4o"]:
-            llm_model = "gpt-4o"
-        elif part in ["gpt4omini", "gpt-4o-mini"]:
-            llm_model = "gpt-4o-mini"
-    
-    # Determine TTS provider
-    use_chatterbox = "chatterbox" in parts or "local" in parts
-    
-    # Determine ASR model
-    asr_model = "openai/whisper-large-v3"  # default
-    for part in parts:
-        if "whisper" in part:
-            if "base" in part:
-                asr_model = "openai/whisper-base"
-            elif "small" in part:
-                asr_model = "openai/whisper-small"
-            elif "medium" in part:
-                asr_model = "openai/whisper-medium"
-            elif "turbo" in part:
-                asr_model = "openai/whisper-large-v3-turbo"
-    
-    # Create providers
-    asr_provider = WhisperLocalProvider(
-        model_id=asr_model,
-        device="auto",
-        language="en",
-    )
-    
-    if use_local_llm:
+    # Create LLM provider
+    if llm_model == "nemotron":
         llm_provider = LocalLLMProvider(
             model_id="nvidia/Llama-3.1-Nemotron-Nano-4B-v1.1",
             device="auto",
             max_new_tokens=512,
             temperature=0.6,
             top_p=0.95,
-            thinking="off",  # Disable reasoning mode for faster responses
+            thinking="off",
         )
-        logger.info(f"Using local LLM: nvidia/Llama-3.1-Nemotron-Nano-4B-v1.1 (thinking=off)")
+        logger.info("Using local LLM: Nemotron")
     else:
         llm_provider = OpenAILLMProvider(
             model=llm_model,
@@ -95,11 +90,12 @@ def create_cascade_agent(
         )
         logger.info(f"Using OpenAI LLM: {llm_model}")
     
-    if use_chatterbox:
+    # Create TTS provider
+    if tts_model == "chatterbox":
         tts_provider = ChatterboxTTSProvider(
             device="auto",
-            exaggeration=0.5,  # Default: balanced emotion
-            cfg_weight=0.5,   # Default: balanced pacing
+            exaggeration=0.5,
+            cfg_weight=0.5,
         )
         logger.info("Using Chatterbox TTS (local)")
     else:
@@ -109,7 +105,7 @@ def create_cascade_agent(
         )
         logger.info("Using OpenAI TTS")
     
-    logger.info(f"Creating CascadeAgent with ASR={asr_model}")
+    logger.info(f"Creating CascadeAgent: ASR={asr_model}, LLM={llm_model}, TTS={tts_model}")
     
     return CascadeAgent(
         tools=tools,
@@ -150,6 +146,9 @@ async def run_task(
     task: Task,
     assistant_model: str = "gpt-4o-realtime-preview-2024-12-17",
     user_model: str = "gpt-4o-realtime-preview-2024-12-17",
+    asr_model: str = "openai",
+    llm_model: str = "gpt-4o",
+    tts_model: str = "openai",
 ):
     global registry
 
@@ -180,12 +179,14 @@ async def run_task(
     logger.info(f"Assistant tools: {[tool.name for tool in assistant_tools]}")
     
     # Select agent based on model name
-    if assistant_model.startswith("cascade"):
+    if assistant_model == "cascade":
         # Create cascade agent with configurable providers
         assistant = create_cascade_agent(
-            assistant_model=assistant_model,
             tools=assistant_tools,
             domain_policy=environment.get_policy(),
+            asr_model=asr_model,
+            llm_model=llm_model,
+            tts_model=tts_model,
         )
     elif assistant_model.startswith("qwen3"):
         agent_name = "qwen3_omni_agent"
@@ -231,11 +232,29 @@ async def run_task(
     return simulation_run
 
 
-async def run_task_with_index(domain: str, task: Task, task_idx: int, total: int, assistant_model: str, user_model: str):
+async def run_task_with_index(
+    domain: str, 
+    task: Task, 
+    task_idx: int, 
+    total: int, 
+    assistant_model: str, 
+    user_model: str,
+    asr_model: str = "openai",
+    llm_model: str = "gpt-4o",
+    tts_model: str = "openai",
+):
     """Run a single task and return indexed result."""
     # try:
     logger.info(f"[{task_idx+1}/{total}] Starting task: {task.id}")
-    simulation_run = await run_task(domain, task, assistant_model=assistant_model, user_model=user_model)
+    simulation_run = await run_task(
+        domain, 
+        task, 
+        assistant_model=assistant_model, 
+        user_model=user_model,
+        asr_model=asr_model,
+        llm_model=llm_model,
+        tts_model=tts_model,
+    )
     
     reward = simulation_run.reward_info.reward if simulation_run.reward_info else 0.0
     is_success = reward >= 1.0
@@ -270,6 +289,9 @@ async def run_all_tasks(
     batch_size: int = 10,
     assistant_model: str = "gpt-4o-realtime-preview-2024-12-17",
     user_model: str = "gpt-4o-realtime-preview-2024-12-17",
+    asr_model: str = "openai",
+    llm_model: str = "gpt-4o",
+    tts_model: str = "openai",
 ):
     """
     Run all tasks in parallel batches.
@@ -281,6 +303,9 @@ async def run_all_tasks(
         batch_size: Number of tasks to run in parallel (default: 10)
         assistant_model: Model to use for assistant (default: gpt-4o-realtime-preview-2024-12-17)
         user_model: Model to use for user simulator (default: gpt-4o-realtime-preview-2024-12-17)
+        asr_model: ASR model for cascade (default: openai)
+        llm_model: LLM model for cascade (default: gpt-4o)
+        tts_model: TTS model for cascade (default: openai)
     """
     tasks = get_tasks(domain, task_ids=task_ids, num_tasks=num_tasks)
     total_tasks = len(tasks)
@@ -305,7 +330,11 @@ async def run_all_tasks(
         
         # Create tasks but don't wait for all at once
         pending = [
-            asyncio.create_task(run_task_with_index(domain, task, batch_start + i, total_tasks, assistant_model, user_model))
+            asyncio.create_task(run_task_with_index(
+                domain, task, batch_start + i, total_tasks, 
+                assistant_model, user_model,
+                asr_model, llm_model, tts_model,
+            ))
             for i, task in enumerate(batch_tasks)
         ]
         
@@ -361,11 +390,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run τ-bench voice evaluation")
     parser.add_argument("--domain", default="airline", choices=["airline", "retail", "telecom"])
     parser.add_argument("--assistant-model", default="cascade", 
-                       help="Model: cascade, cascade-local, cascade-chatterbox, gpt-4o-realtime-*, gemini-*, qwen3_omni")
+                       help="Model: cascade, gpt-4o-realtime-*, gemini-*, qwen3_omni")
     parser.add_argument("--user-model", default="gpt-realtime-2025-08-28")
     parser.add_argument("--task-ids", nargs="+", default=None, help="Specific task IDs to run")
     parser.add_argument("--num-tasks", type=int, default=None, help="Number of tasks to run")
     parser.add_argument("--batch-size", type=int, default=1, help="Parallel batch size (use 1 for local models)")
+    
+    # Cascade-specific model options
+    parser.add_argument("--asr-model", default="openai",
+                       help="ASR model for cascade: openai, whisper-large-v3, whisper-base, etc.")
+    parser.add_argument("--llm-model", default="gpt-4o",
+                       help="LLM model for cascade: gpt-4o, gpt-4o-mini, nemotron")
+    parser.add_argument("--tts-model", default="openai",
+                       help="TTS model for cascade: openai, chatterbox")
+    
     args = parser.parse_args()
     
     # Model selection reference:
@@ -374,11 +412,10 @@ if __name__ == "__main__":
     # - "gemini-2.5-flash-native-audio-preview-12-2025" - Gemini Live
     # - "qwen3_omni" - Qwen3-Omni (requires local vLLM server)
     # 
-    # Cascade pipeline options:
-    # - "cascade" - Whisper ASR + GPT-4o-mini + OpenAI TTS
-    # - "cascade-chatterbox" - Whisper ASR + GPT-4o-mini + Chatterbox TTS (local)
-    # - "cascade-local" - Fully local: Whisper + Nemotron LLM + Chatterbox TTS
-    # - "cascade-whisper-base" - Cascade with smaller Whisper model
+    # Cascade pipeline (--assistant-model cascade):
+    #   --asr-model: openai (default), whisper-large-v3, whisper-base, whisper-small, whisper-medium
+    #   --llm-model: gpt-4o (default), gpt-4o-mini, nemotron (local)
+    #   --tts-model: openai (default), chatterbox (local)
     
     # Default to single task if nothing specified
     task_ids = args.task_ids or ["0"]
@@ -386,6 +423,10 @@ if __name__ == "__main__":
     logger.info(f"Running evaluation:")
     logger.info(f"  Domain: {args.domain}")
     logger.info(f"  Assistant: {args.assistant_model}")
+    if args.assistant_model == "cascade":
+        logger.info(f"    ASR: {args.asr_model}")
+        logger.info(f"    LLM: {args.llm_model}")
+        logger.info(f"    TTS: {args.tts_model}")
     logger.info(f"  User: {args.user_model}")
     logger.info(f"  Tasks: {task_ids if args.task_ids else f'first {args.num_tasks or 1}'}")
     
@@ -396,6 +437,9 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         assistant_model=args.assistant_model,
         user_model=args.user_model,
+        asr_model=args.asr_model,
+        llm_model=args.llm_model,
+        tts_model=args.tts_model,
     ))
     
     logger.info(f"\nEvaluation completed with final accuracy: {accuracy:.3f}")
