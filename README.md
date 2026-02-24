@@ -11,27 +11,30 @@ TAU2-Voice extends the TAU2 framework to evaluate voice-based conversational age
 
 ### Supported Models
 
-- **OpenAI Realtime API** (`gpt-realtime-2025-08-28`, `gpt-realtime-mini-2025-10-06`)
+- **OpenAI Realtime API** (`gpt-realtime-1.5`, `gpt-realtime-2025-08-28`, `gpt-realtime-mini-2025-10-06`)
 - **Qwen3-Omni** (via vLLM server)
 - **Gemini Live API** (`gemini-2.5-flash-native-audio-preview-12-2025`)
 
 ## Performance Comparison
 
-Voice-based evaluation shows significant performance degradation compared to text-based evaluation:
+Voice-based evaluation shows significant performance degradation compared to text-based evaluation.
+
+> **User simulator**: `gpt-realtime-1.5` for all voice-based evaluations below.
 
 | Model | Retail | Airline | Telecom |
 |-------|--------|---------|---------|
 | **Text-based Baselines** | | | |
 | GPT-4o-2024-11-20 | 67.3 | 46.9 | 24.1 |
 | GPT-4.1 | 70.2 | 53.0 | 38.9 |
-| **Voice-based Baselines** | | | |
-| gpt-realtime | **43.9** | **40.0** | **0.088** |
-| Qwen3-Omni-30B-A3B-Instruct | - | **30.6** | **0.00** |
-| gpt-realtime-mini | **13.2** | **18.0** | **0.00** |
+| **Voice-based** | | | |
+| gpt-realtime-1.5 | **22.0** | **42.0** | - |
+| gpt-realtime | 22.0 | 26.0 | - |
+| gpt-realtime-mini | - | - | - |
 
 **Key Observations:**
-- Voice-based agents show **30-40% performance drop** in Retail and Airline domains
-- **Near-zero performance** in complex multi-turn Telecom domain
+- `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming `gpt-realtime` (26.0%) by a significant margin
+- Voice-based agents show **25-45% performance drop** compared to text-based baselines
+- Using `gpt-realtime-1.5` as the user simulator significantly reduces role confusion, leading to more reliable evaluations
 - Challenges include acoustic ambiguity, role confusion, and difficulty maintaining conversation context
 
 ## Installation
@@ -68,12 +71,20 @@ Edit `src/tau2_voice/run.py` to configure:
 - `num_tasks`: Number of tasks to evaluate
 - `batch_size`: Parallel task execution
 
+### Example: Run with gpt-realtime-1.5
+
+```python
+# In src/tau2_voice/run.py
+assistant_model = "gpt-realtime-1.5"
+user_model = "gpt-realtime-1.5"
+```
+
 ### Example: Run with Gemini Live
 
 ```python
 # In src/tau2_voice/run.py
 assistant_model = "gemini-2.5-flash-native-audio-preview-12-2025"
-user_model = "gpt-realtime-2025-08-28"
+user_model = "gpt-realtime-1.5"
 ```
 
 ### Example: Run with Qwen3-Omni
@@ -88,7 +99,7 @@ bash run_qwen3_omni.sh
 ```python
 # In src/tau2_voice/run.py
 assistant_model = "qwen3_omni"
-user_model = "gpt-realtime-2025-08-28"
+user_model = "gpt-realtime-1.5"
 ```
 
 ## Architecture

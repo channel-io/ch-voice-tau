@@ -28,25 +28,26 @@ from tau2.data_model.simulation import SimulationRun, TerminationReason
 from tau2.evaluator.evaluator import evaluate_simulation, EvaluationType
 
 
-DEFAULT_FIRST_INSTRUCTIONS = """⚠️ SPEAK IN ENGLISH ONLY! NO Arabic, Spanish, Korean, Chinese, or any other language! ⚠️
+DEFAULT_FIRST_INSTRUCTIONS = """⚠️ SPEAK IN ENGLISH ONLY! ⚠️
 
-YOU ARE THE CUSTOMER seeking help.
+YOU ARE THE CUSTOMER who is calling for help. You are NOT the agent.
 
-CRITICAL: 
+CRITICAL:
 1. SPEAK IN ENGLISH
-2. Read your scenario carefully 
-3. Start the conversation about YOUR SPECIFIC PROBLEM mentioned in the scenario
+2. You are the CALLER / CUSTOMER — you NEED help
+3. Start by introducing yourself and stating YOUR problem from the scenario
 
 DO NOT:
 - Speak any language other than ENGLISH
-- Ask "What can I help you with"
-- Talk about random devices or things not in your scenario
-- Offer to help anyone
+- Say "How can I help you" or "I'd be happy to help" — those are AGENT phrases
+- Offer to look anything up or check any system
+- Act like you work at the company
 
 DO:
 - SPEAK IN ENGLISH
-- Mention your ORDER NUMBER or ACCOUNT issue from your scenario
-- Ask for help with YOUR SPECIFIC problem IN ENGLISH"""
+- Say your NAME and your problem (e.g. "Hi, I'm [name], I need help with...")
+- Mention your ORDER NUMBER or RESERVATION from your scenario
+- Wait for the agent to assist you"""
 
 # When the user simulator slips into "agent" voice, we re-ask once/twice with stronger constraints.
 USER_MAX_REPAIR_ATTEMPTS = 2
@@ -94,19 +95,33 @@ def _looks_like_agent_speech(text: str) -> bool:
     if not t:
         return False
     # Strong Spanish markers we saw in logs
-    if any(tok in text for tok in ["¿", "¡", "políticas", "reserva", "podrías", "claro"]):
+    # NOTE: "reserva" removed — it's a substring of English "reservation" causing false positives
+    if any(tok in text for tok in ["¿", "¡", "políticas", "podrías"]):
         return True
     # Classic agent openings / phrases
-    agent_starts = (
-        "hi! how can i help",
-        "hello! how can i help",
-        "how can i help you",
-        "how may i help you",
+    # Check both as startswith AND as substring — role-confused speech often
+    # starts with "Hi [Name], I'd be happy to help..." which misses startswith.
+    agent_markers = (
+        "how can i help",
+        "how may i help",
         "thank you for sharing",
+        "thanks for sharing",
         "i can help you",
         "i'd be happy to help",
+        "i'd be glad to help",
+        "i can definitely help",
+        "i completely understand your situation",
+        "i can assist",
+        "i'd love to help",
+        "sure, i can help",
+        "no problem, let me",
+        "let's take a look",
+        "let's take a closer look",
+        "let's go through your options",
+        "let's see what",
+        "let me help you",
     )
-    if any(t.startswith(s) for s in agent_starts):
+    if any(s in t for s in agent_markers):
         return True
     agent_phrases = (
         "that will help me proceed",
@@ -114,8 +129,22 @@ def _looks_like_agent_speech(text: str) -> bool:
         "could you confirm the name",
         "could you provide",
         "let me check",
+        "let me look",
+        "let me pull up",
+        "let me verify",
         "i'll check",
+        "i'll look",
         "i have your",
+        "i'm seeing",
+        "based on what i'm seeing",
+        "based on your",
+        "i can see your",
+        "let me connect you",
+        "i'll pull up",
+        "you're entitled to",
+        "you're allowed",
+        "you qualify for",
+        "your account shows",
     )
     return any(p in t for p in agent_phrases)
 
@@ -398,7 +427,10 @@ class VoiceOrchestrator:
             self._last_agent_transcript = event.transcript
             self._user_repair_attempts = 0
         elif source.role == "user":
-            if _looks_like_agent_speech(event.transcript) and self._user_repair_attempts < USER_MAX_REPAIR_ATTEMPTS:
+            is_agent_like = _looks_like_agent_speech(event.transcript)
+            if is_agent_like:
+                logger.warning(f"Agent-like speech detected in: {event.transcript[:100]}")
+            if is_agent_like and self._user_repair_attempts < USER_MAX_REPAIR_ATTEMPTS:
                 self._user_repair_attempts += 1
                 hint = self._customer_opening_cache or _build_customer_opening(self._scenario_str_cache)
                 retry_instructions = (
