@@ -29,11 +29,12 @@ Voice-based evaluation shows significant performance degradation compared to tex
 | **Voice-based** | | | |
 | gpt-realtime-1.5 | **22.0** | **42.0** | - |
 | gpt-realtime | 22.0 | 26.0 | - |
-| gpt-realtime-mini | - | - | - |
+| gpt-realtime-mini | 6.0 | 10.0 | - |
 
 **Key Observations:**
-- `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming `gpt-realtime` (26.0%) by a significant margin
+- `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming `gpt-realtime` (26.0%) and `gpt-realtime-mini` (10.0%) by a significant margin
 - Voice-based agents show **25-45% performance drop** compared to text-based baselines
+- `gpt-realtime-mini` struggles across both domains (6.0% Retail, 10.0% Airline)
 - Using `gpt-realtime-1.5` as the user simulator significantly reduces role confusion, leading to more reliable evaluations
 - Challenges include acoustic ambiguity, role confusion, and difficulty maintaining conversation context
 
