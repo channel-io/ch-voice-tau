@@ -30,7 +30,7 @@ Voice-based evaluation shows significant performance degradation compared to tex
 | gpt-realtime-1.5 | 22.0 | **42.0** | - |
 | Qwen3-Omni | 10.0 | 32.0 | - |
 | gpt-realtime | 22.0 | 26.0 | - |
-| Gemini 2.5 Flash Native Audio | **28.0** | - | - |
+| Gemini 2.5 Flash Native Audio | **28.0** | 18.0 | - |
 | gpt-realtime-mini | 6.0 | 10.0 | - |
 
 **Key Observations:**
