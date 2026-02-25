@@ -159,6 +159,7 @@ class GeminiLiveAgent(BaseAgent):
         
         # Pending tool calls
         self._pending_tool_calls: dict = {}
+        self._pending_tool_response_sent: bool = False
     
     @property
     def system_prompt(self):
@@ -270,6 +271,7 @@ class GeminiLiveAgent(BaseAgent):
             return
         
         try:
+            logger.debug(f"[{self.role}] publish received event: {event.type}")
             if event.type == "audio.chunk":
                 # Skip audio chunks - we'll use transcript instead for more reliable response
                 # VAD with audio input is unreliable
@@ -301,23 +303,40 @@ class GeminiLiveAgent(BaseAgent):
                         logger.error(f"[{self.role}] Failed to send transcript: {e}")
             
             elif event.type == "speak.request":
-                # For text-based requests (like after tool calls)
+                # Gemini automatically responds after send_tool_response,
+                # so skip speak.request to avoid conflicting with tool response.
+                # Only send if there are explicit instructions (non-tool context).
                 if hasattr(event, 'instructions') and event.instructions:
-                    await self._session.send_client_content(
-                        turns={"role": "user", "parts": [{"text": event.instructions}]},
-                        turn_complete=True
-                    )
+                    # Check if we just sent a tool response - if so, skip
+                    if not self._pending_tool_response_sent:
+                        await self._session.send_client_content(
+                            turns={"role": "user", "parts": [{"text": event.instructions}]},
+                            turn_complete=True
+                        )
+                    else:
+                        logger.debug(f"[{self.role}] Skipping speak.request after tool response")
+                        self._pending_tool_response_sent = False
+                else:
+                    # Empty speak.request (after tool call) - skip for Gemini
+                    logger.debug(f"[{self.role}] Skipping empty speak.request (Gemini auto-responds after tool response)")
             
             elif event.type == "tool_call.result":
+                # Truncate large tool responses to avoid Gemini Live 1008 errors
+                content = event.content
+                if len(content) > 2000:
+                    logger.warning(f"[{self.role}] Truncating tool response from {len(content)} to 2000 chars")
+                    content = content[:2000] + "... (truncated)"
+
                 # Send tool response back to Gemini
                 function_response = types.FunctionResponse(
                     id=event.id,
                     name=self._pending_tool_calls.get(event.id, "unknown"),
-                    response={"result": event.content}
+                    response={"result": content}
                 )
                 await self._session.send_tool_response(
                     function_responses=[function_response]
                 )
+                self._pending_tool_response_sent = True
                 # Clean up
                 if event.id in self._pending_tool_calls:
                     del self._pending_tool_calls[event.id]
@@ -344,18 +363,26 @@ class GeminiLiveAgent(BaseAgent):
         """Background task to receive messages from Gemini"""
         if self._session is None:
             return
-        
+
         try:
-            async for response in self._session.receive():
-                if not self._is_connected:
-                    break
-                
-                await self._process_response(response)
-                
+            while self._is_connected:
+                async for response in self._session.receive():
+                    if not self._is_connected:
+                        break
+                    await self._process_response(response)
+
+                if self._is_connected:
+                    logger.debug(f"[{self.role}] receive() iterator ended, restarting...")
+                    await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
         except Exception as e:
             logger.error(f"[{self.role}] Error in receive loop: {e}")
+            import traceback
+            traceback.print_exc()
+            # Signal conversation end so orchestrator doesn't hang
+            from tau2_voice.models.events import ConversationEndEvent
+            await self._event_queue.put(ConversationEndEvent(role=self.role, reason=f"receive_loop_error: {e}"))
     
     async def _process_response(self, response):
         """Process a response from Gemini Live API"""

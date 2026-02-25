@@ -111,23 +111,37 @@ async def run_task(
     return simulation_run
 
 
-async def run_task_with_index(domain: str, task: Task, task_idx: int, total: int, assistant_model: str, user_model: str):
-    """Run a single task and return indexed result."""
+async def run_task_with_index(domain: str, task: Task, task_idx: int, total: int, assistant_model: str, user_model: str, timeout: float = 300.0):
+    """Run a single task and return indexed result. Timeout per task (default 5 min)."""
     try:
         logger.info(f"[{task_idx+1}/{total}] Starting task: {task.id}")
-        simulation_run = await run_task(domain, task, assistant_model=assistant_model, user_model=user_model)
-        
+        simulation_run = await asyncio.wait_for(
+            run_task(domain, task, assistant_model=assistant_model, user_model=user_model),
+            timeout=timeout,
+        )
+
         reward = simulation_run.reward_info.reward if simulation_run.reward_info else 0.0
         is_success = reward >= 1.0
-        
+
         logger.info(f"[{task_idx+1}/{total}] Task {task.id} completed: {'✓' if is_success else '✗'} (reward={reward:.3f})")
-        
+
         return {
             'task_id': task.id,
             'simulation_id': simulation_run.id,
             'reward': reward,
             'success': is_success,
             'duration': simulation_run.duration,
+            'index': task_idx,
+        }
+    except asyncio.TimeoutError:
+        logger.error(f"[{task_idx+1}/{total}] Task {task.id} timed out after {timeout}s")
+        return {
+            'task_id': task.id,
+            'simulation_id': None,
+            'reward': 0.0,
+            'success': False,
+            'duration': timeout,
+            'error': f'timeout after {timeout}s',
             'index': task_idx,
         }
     except Exception as e:
@@ -236,26 +250,27 @@ async def run_all_tasks(
 
 
 if __name__ == "__main__":
-    domain = "airline" # airline, retail, telecom
-    
-    # Model selection
-    # assistant_model = "gpt-realtime-mini-2025-10-06"  # or "gpt-realtime-mini-2025-10-06"
-    # assistant_model = "qwen3_omni"
-    assistant_model = "gemini-2.5-flash-native-audio-preview-12-2025"
-    user_model = "gpt-realtime-2025-08-28"
-    
-    # Run all tasks (or specify task_ids or num_tasks)
-    num_tasks = 50  # Run first task only
-    task_ids = None  # Set to None to use num_tasks, or specify IDs for airline/retail
-    
-    # For telecom, use num_tasks since task IDs are complex strings
-    # For airline/retail, you can use task_ids like ["0", "1", "2"]
-    
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--domain", default="airline")
+    parser.add_argument("--assistant-model", default="qwen3_omni")
+    parser.add_argument("--user-model", default="gpt-realtime-1.5")
+    parser.add_argument("--num-tasks", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--task-ids", nargs="*", default=None)
+    args = parser.parse_args()
+
+    domain = args.domain
+    assistant_model = args.assistant_model
+    user_model = args.user_model
+    num_tasks = args.num_tasks
+    task_ids = args.task_ids
+
     results, accuracy = asyncio.run(run_all_tasks(
         domain=domain,
-        task_ids=["0"],
+        task_ids=task_ids,
         num_tasks=num_tasks,
-        batch_size=5,  # Run 10 tasks in parallel
+        batch_size=args.batch_size,
         assistant_model=assistant_model,
         user_model=user_model,
     ))

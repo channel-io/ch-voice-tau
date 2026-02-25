@@ -30,10 +30,12 @@ Voice-based evaluation shows significant performance degradation compared to tex
 | gpt-realtime-1.5 | 22.0 | **42.0** | - |
 | Qwen3-Omni | 10.0 | 32.0 | - |
 | gpt-realtime | 22.0 | 26.0 | - |
+| Gemini 2.5 Flash Native Audio | **28.0** | - | - |
 | gpt-realtime-mini | 6.0 | 10.0 | - |
 
 **Key Observations:**
 - `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming all other voice models
+- `Gemini 2.5 Flash Native Audio` achieves **28.0%** on Retail, outperforming `gpt-realtime-1.5` (22.0%) and all other voice models on Retail
 - `Qwen3-Omni` (open-source, 30B MoE) achieves **32.0%** on Airline, competitive with proprietary models
 - Voice-based agents show **25-45% performance drop** compared to text-based baselines
 - `gpt-realtime-mini` struggles across both domains (6.0% Retail, 10.0% Airline)
