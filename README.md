@@ -27,12 +27,14 @@ Voice-based evaluation shows significant performance degradation compared to tex
 | GPT-4o-2024-11-20 | 67.3 | 46.9 | 24.1 |
 | GPT-4.1 | 70.2 | 53.0 | 38.9 |
 | **Voice-based** | | | |
-| gpt-realtime-1.5 | **22.0** | **42.0** | - |
+| gpt-realtime-1.5 | 22.0 | **42.0** | - |
+| Qwen3-Omni | 10.0 | 32.0 | - |
 | gpt-realtime | 22.0 | 26.0 | - |
 | gpt-realtime-mini | 6.0 | 10.0 | - |
 
 **Key Observations:**
-- `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming `gpt-realtime` (26.0%) and `gpt-realtime-mini` (10.0%) by a significant margin
+- `gpt-realtime-1.5` achieves **42.0%** on Airline, outperforming all other voice models
+- `Qwen3-Omni` (open-source, 30B MoE) achieves **32.0%** on Airline, competitive with proprietary models
 - Voice-based agents show **25-45% performance drop** compared to text-based baselines
 - `gpt-realtime-mini` struggles across both domains (6.0% Retail, 10.0% Airline)
 - Using `gpt-realtime-1.5` as the user simulator significantly reduces role confusion, leading to more reliable evaluations
