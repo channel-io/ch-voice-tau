@@ -1,6 +1,6 @@
 # TAU2-Voice: Voice-based Conversational Agent Evaluation
 
-[![python](https://img.shields.io/badge/Python-3.12%2B-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
+[![python](https://img.shields.io/badge/Python-3.12%E2%80%933.13-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
 [![arXiv](http://img.shields.io/badge/cs.AI-arXiv%3A2506.07982-B31B1B.svg?logo=arxiv&logoColor=red)](https://arxiv.org/abs/2506.07982)
 
 Voice-based extension of [TAU2-Bench](https://arxiv.org/abs/2506.07982) for evaluating real-time voice agents in customer service scenarios.
@@ -52,7 +52,8 @@ cd ch-voice-tau
 
 2. Install dependencies:
 ```bash
-pip install -e .
+uv sync --locked
+source .venv/bin/activate
 ```
 
 3. Set up API keys:
